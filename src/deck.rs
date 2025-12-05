@@ -4,7 +4,6 @@ use std::fmt;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 
-#[derive(Copy, Clone, Debug)]
 pub struct Deck {
     pub cards: Vec<Card>,
 }

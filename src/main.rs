@@ -4,6 +4,7 @@ mod deck;
 mod r#move;
 mod player;
 mod game;
+mod knowledge;
 
 use crate::player::Player;
 use crate::r#move::Move;

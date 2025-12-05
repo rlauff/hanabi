@@ -1,8 +1,9 @@
+use crate::knowledge::Knowledge;
 use crate::player::Player;
 use crate::deck::Deck;
 use crate::r#move::Move;
 
-struct Game {
+pub struct Game {
     players: [Player; 2],
     deck: Deck,
     fireworks: [u8; 5], // one for each color
@@ -12,25 +13,21 @@ struct Game {
 }
 
 impl Game {
-    fn new(player_strategies: [fn(&Player) -> Move; 2]) -> Self {
+    pub fn new(player_strategies: [fn(&Player) -> Move; 2]) -> Self {
         let mut deck = Deck::new_full_deck();
         deck.shuffle();
 
         let mut players = [
             Player {
-                index: 0,
-                other_player_index: 1,
                 hand: Vec::new(),
-                hand_knowledge: [ Deck::new_full_deck(); 5],
-                infered_hand_knowledge: [ Deck::new_full_deck(); 5],
+                hand_knowledge: [ Knowledge::new_full(); 5],
+                infered_hand_knowledge: [ Knowledge::new_full(); 5],
                 strategy: player_strategies[0],
             },
             Player {
-                index: 1,
-                other_player_index: 0,
                 hand: Vec::new(),
-                hand_knowledge: [ Deck::new_full_deck(); 5],
-                infered_hand_knowledge: [ Deck::new_full_deck(); 5],
+                hand_knowledge: [ Knowledge::new_full(); 5],
+                infered_hand_knowledge: [ Knowledge::new_full(); 5],
                 strategy: player_strategies[1],
             },
         ];
@@ -56,7 +53,7 @@ impl Game {
         game
     }
 
-    fn display_game_state(&self) {
+    pub fn display_game_state(&self) {
         println!("Fireworks: {:?}", self.fireworks);
         println!("Hints remaining: {}", self.hints_remaining);
         println!("Mistakes made: {}", self.mistakes_made);
