@@ -19,7 +19,7 @@ pub enum Move {
 }
 
 pub enum MoveResult{
-    Play(bool, Option<Card>),
-    Discard(Option<Card>),
+    Play(bool, Card),
+    Discard(Card),
     Hint(Vec<usize>, Vec<Knowledge>), //indices of cards hinted, knowledge updates for each card in other player's hand
 }

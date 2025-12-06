@@ -10,7 +10,6 @@ mod strategies;
 use crate::game::Game;
 use crate::player::Player;
 use crate::strategy::Strategy;
-use crate::strategies::random::RandomStrategy; 
 use crate::strategies::random_only_play::RandomOnlyPlay;
 
 const GAMES_TO_SIMULATE: u32 = 1000000;
@@ -18,7 +17,6 @@ const GAMES_TO_SIMULATE: u32 = 1000000;
 fn main() {
     // Registry of strategies. Uses closures to create fresh instances for every game.
     let strategies: Vec<(&str, fn() -> Box<dyn Strategy>)> = vec![
-        ("Random", || Box::new(RandomStrategy::new())),
         ("Random Only Play", || Box::new(strategies::random_only_play::RandomOnlyPlay::new())),
     ];
 

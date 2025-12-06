@@ -7,7 +7,7 @@ use rand::seq::IndexedRandom;
 /// It tracks the game state locally to determine which moves are currently legal.
 pub struct RandomOnlyPlay { 
     hints_remaining: u8,
-    own_hand: Vec<Card>,
+    own_hand_size: u8,
     other_players_hand: Vec<Card>,
 }
 
@@ -16,7 +16,7 @@ impl RandomOnlyPlay {
     pub fn new() -> Self {
         RandomOnlyPlay {
             hints_remaining: 8, // Standard Hanabi starts with 8 hint tokens
-            own_hand: Vec::new(),
+            own_hand_size: 5,
             other_players_hand: Vec::new(),
         }
     }
@@ -27,8 +27,8 @@ impl RandomOnlyPlay {
 
         // 1. Play and Discard moves
         // You can always attempt to play or discard any card currently in your hand.
-        for card_index in 0..self.own_hand.len() {
-            moves.push(Move::Play(card_index));
+        for card_index in 0..self.own_hand_size {
+            moves.push(Move::Play(card_index as usize));
         }
         moves
     }
@@ -47,31 +47,25 @@ impl Strategy for RandomOnlyPlay {
     }
 
     /// Initializes the strategy at the start of the game with the initial hands.
-    fn initialize(&mut self, own_hand: &Vec<Card>, other_player_hand: &Vec<Card>) {
-        self.own_hand = own_hand.clone();
+    fn initialize(&mut self, other_player_hand: &Vec<Card>) {
+        self.own_hand_size = 5;
         self.other_players_hand = other_player_hand.clone();
         self.hints_remaining = 8; // Reset hints to 8
     }
 
     /// Updates the local state after the player (self) makes a move.
-    fn update_after_own_move(&mut self, mv: &Move, mv_result: &MoveResult) {
+    fn update_after_own_move(&mut self, mv: &Move, mv_result: &MoveResult ,got_new_card: bool) {
         match mv {
             Move::Play(card_index) => {
-                // Remove the played card
-                self.own_hand.remove(*card_index);
-                
-                // If a new card was drawn (result contains Some(card)), add it to hand
-                if let MoveResult::Play(_, Some(card)) = mv_result {
-                    self.own_hand.push(*card);
+                if !got_new_card {
+                    // If no new card was drawn, just decrease hand size
+                    self.own_hand_size -= 1;
                 }
             }
             Move::Discard(card_index) => {
-                // Remove the discarded card
-                self.own_hand.remove(*card_index);
-                
-                // If a new card was drawn, add it to hand
-                if let MoveResult::Discard(Some(card)) = mv_result {
-                    self.own_hand.push(*card);
+                if !got_new_card {
+                    // If no new card was drawn, just decrease hand size
+                    self.own_hand_size -= 1;
                 }
                 
                 // Discarding regains a hint token, up to a max of 8
@@ -94,7 +88,7 @@ impl Strategy for RandomOnlyPlay {
                 self.other_players_hand.remove(*card_index);
                 
                 // If they drew a new card, add it to their hand tracker
-                if let MoveResult::Play(_, Some(card)) = mv_result {
+                if let MoveResult::Play(_, card) = mv_result {
                     self.other_players_hand.push(*card);
                 }
             }
@@ -103,7 +97,7 @@ impl Strategy for RandomOnlyPlay {
                 self.other_players_hand.remove(*card_index);
                 
                 // If they drew a new card, add it to their hand tracker
-                if let MoveResult::Discard(Some(card)) = mv_result {
+                if let MoveResult::Discard(card) = mv_result {
                     self.other_players_hand.push(*card);
                 }
                 
@@ -117,5 +111,9 @@ impl Strategy for RandomOnlyPlay {
                 self.hints_remaining -= 1;
             }
         }
+    }
+
+    fn see(&mut self, _card: &Card) {
+        // This strategy does not utilize information about seen cards.
     }
 }

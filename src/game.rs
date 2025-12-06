@@ -40,8 +40,8 @@ impl Game {
         }
 
         // initialize players stretegy with other player's hand
-        game.players[0].strategy.initialize(&player0_hand, &player1_hand);
-        game.players[1].strategy.initialize(&player1_hand, &player0_hand);
+        game.players[0].strategy.initialize(&player1_hand);
+        game.players[1].strategy.initialize(&player0_hand);
 
         game
     }
@@ -70,26 +70,28 @@ impl Game {
 
         self.players[self.player_to_move].hand.remove(card_index);
         // Draw a new card if possible
-        let card_seen;
+        let got_new_card: bool;
         if let Some(new_card) = self.deck.cards.pop() {
             self.players[self.player_to_move].hand.push(new_card);
-            card_seen = Some(new_card);
+            let other_player_index = if self.player_to_move == 0 { 1 } else { 0 };
+            self.players[other_player_index].strategy.see(&new_card);
+            got_new_card = true;
         } else {
-            card_seen = None;
+            got_new_card = false;
         }
 
         if self.fireworks[card_color_index] + 1 == card_value {
             // Successful play
             self.fireworks[card_color_index] += 1;
-            self.players[self.player_to_move].strategy.update_after_own_move(&Move::Play(card_index), &MoveResult::Play(true, card_seen));
+            self.players[self.player_to_move].strategy.update_after_own_move(&Move::Play(card_index), &MoveResult::Play(true, card), got_new_card);
             let other_player_index = if self.player_to_move == 0 { 1 } else { 0 };
-            self.players[other_player_index].strategy.update_after_other_player_move(&Move::Play(card_index), &MoveResult::Play(true, card_seen));
+            self.players[other_player_index].strategy.update_after_other_player_move(&Move::Play(card_index), &MoveResult::Play(true, card));
         } else {
             // Failed play
             self.mistakes_made += 1;
-            self.players[self.player_to_move].strategy.update_after_own_move(&Move::Play(card_index), &MoveResult::Play(false, card_seen));
+            self.players[self.player_to_move].strategy.update_after_own_move(&Move::Play(card_index), &MoveResult::Play(false, card), got_new_card);
             let other_player_index = if self.player_to_move == 0 { 1 } else { 0 };
-            self.players[other_player_index].strategy.update_after_other_player_move(&Move::Play(card_index), &MoveResult::Play(false, card_seen));
+            self.players[other_player_index].strategy.update_after_other_player_move(&Move::Play(card_index), &MoveResult::Play(false, card));
         }
     }
 
@@ -98,17 +100,20 @@ impl Game {
         if self.hints_remaining < 8 {
             self.hints_remaining += 1;
         }
-        // Draw a new card if possible
-        let card_seen;
+         // Draw a new card if possible
+        let got_new_card: bool;
         if let Some(new_card) = self.deck.cards.pop() {
             self.players[self.player_to_move].hand.push(new_card);
-            card_seen = Some(new_card);
+            let other_player_index = if self.player_to_move == 0 { 1 } else { 0 };
+            self.players[other_player_index].strategy.see(&new_card);
+            got_new_card = true;
         } else {
-            card_seen = None;
+            got_new_card = false;
         }
-        self.players[self.player_to_move].strategy.update_after_own_move(&Move::Discard(card_index), &MoveResult::Discard(card_seen));
+
+        self.players[self.player_to_move].strategy.update_after_own_move(&Move::Discard(card_index), &MoveResult::Discard(card), got_new_card);
         let other_player_index = if self.player_to_move == 0 { 1 } else { 0 };
-        self.players[other_player_index].strategy.update_after_other_player_move(&Move::Discard(card_index), &MoveResult::Discard(card_seen));
+        self.players[other_player_index].strategy.update_after_other_player_move(&Move::Discard(card_index), &MoveResult::Discard(card));
     }
 
     fn give_hint_color(&mut self, color: Color) {
@@ -125,7 +130,7 @@ impl Game {
 
         let knowledge_updates = hinted_indices.iter().map(|x| Knowledge::from_color(color)).collect::<Vec<Knowledge>>();
 
-        self.players[self.player_to_move].strategy.update_after_own_move(&Move::HintColor(color), &MoveResult::Hint(hinted_indices.clone(), knowledge_updates.clone()));
+        self.players[self.player_to_move].strategy.update_after_own_move(&Move::HintColor(color), &MoveResult::Hint(hinted_indices.clone(), knowledge_updates.clone()), false);
         self.players[other_player_index].strategy.update_after_other_player_move(&Move::HintColor(color), &MoveResult::Hint(hinted_indices, knowledge_updates));
     }
 
@@ -143,7 +148,7 @@ impl Game {
 
         let knowledge_updates = hinted_indices.iter().map(|x| Knowledge::from_value(value)).collect::<Vec<Knowledge>>();
 
-        self.players[self.player_to_move].strategy.update_after_own_move(&Move::HintValue(value), &MoveResult::Hint(hinted_indices.clone(), knowledge_updates.clone()));
+        self.players[self.player_to_move].strategy.update_after_own_move(&Move::HintValue(value), &MoveResult::Hint(hinted_indices.clone(), knowledge_updates.clone()), false);
         self.players[other_player_index].strategy.update_after_other_player_move(&Move::HintValue(value), &MoveResult::Hint(hinted_indices, knowledge_updates));
     }
 
