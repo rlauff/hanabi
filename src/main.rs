@@ -10,9 +10,10 @@ use crate::player::Player;
 use crate::r#move::Move;
 use crate::game::Game;
 
-fn strategy_random_move(_player: &Player) -> Move {
-    // Play a random move
-    Move::Play(0)
+fn strategy_random_move(_player: &Player, game_state: Game ) -> Move {
+    let possible_moves = game_state.possible_moves();
+    let mut rng = rand::thread_rng();
+    *possible_moves.choose(&mut rng).expect("No possible moves")
 }
 
 fn main() {
