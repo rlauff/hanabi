@@ -1,8 +1,10 @@
+use rand::rand_core::le;
+
 use crate::knowledge::{self, Knowledge};
 use crate::player::Player;
 use crate::deck::Deck;
-use crate::r#move::Move;
 use crate::enums::Color;
+use crate::{card, enums::*};
 
 pub struct Game {
     players: [Player; 2],
@@ -29,49 +31,25 @@ impl Game {
             player_to_move: 0,
         };
 
-        // Deal initial hands: pop from deck into each player's hand and notify the other player
-        for player_index in 0..2 {
-            for _ in 0..5 {
-                let other_player_index = if player_index == 0 { 1 } else { 0 };
-                let new_card = game.deck.cards.pop().expect("Deck is empty");
-                game.players[player_index].update_after_own_move(Some(new_card));
-                game.players[other_player_index].update_after_other_player_move(Some(new_card));
-            }
+        // Deal initial hands
+        let mut player0_hand = Vec::new();
+        let mut player1_hand = Vec::new();
+        for _ in 0..5 {
+            player0_hand.push(game.players[0].draw(&mut game.deck));
+            player1_hand.push(game.players[1].draw(&mut game.deck));
         }
+
+        // initialize players stretegy with other player's hand
+        game.players[0].strategy.initialize(&player0_hand, &player1_hand);
+        game.players[1].strategy.initialize(&player1_hand, &player0_hand);
+
         game
     }
 
-    pub fn possible_moves(&self) -> Vec<Move> {
-        let mut moves = Vec::new();
-        let current_player = &self.players[self.player_to_move];
-
-        // Play and Discard moves
-        for card_index in 0..current_player.hand.len() {
-            moves.push(Move::Play(card_index));
-            moves.push(Move::Discard(card_index));
-        }
-
-        // Hint moves
-        if self.hints_remaining > 0 {
-            let other_player_index = if self.player_to_move == 0 { 1 } else { 0 };
-            let other_player = &self.players[other_player_index];
-
-            // Hint colors
-            for color in [Color::Red, Color::Green, Color::Blue, Color::Yellow, Color::White].iter() {
-                if other_player.hand.iter().any(|&card| card.get_color() == *color) {
-                    moves.push(Move::HintColor(*color));
-                }
-            }
-
-            // Hint values
-            for value in 1..=5u8 {
-                if other_player.hand.iter().any(|&card| card.get_value() == value) {
-                    moves.push(Move::HintValue(value));
-                }
-            }
-        }
-
-        moves
+    pub fn advance(&mut self) {
+        let player_index = self.player_to_move;
+        let selected_move = self.players[player_index].strategy.decide_move();
+        self.apply_move(selected_move);
     }
 
     pub fn apply_move(&mut self, mv: Move) {
@@ -85,87 +63,106 @@ impl Game {
     }
 
     fn play(&mut self, card_index: usize) {
+        // println!("Player {} plays card {} at index {}", self.player_to_move, self.players[self.player_to_move].hand[card_index], card_index);
         let card = self.players[self.player_to_move].hand[card_index];
-        // update player to move's strategy about their own move
-        self.players[self.player_to_move].strategy.update_after_own_move(Some(card));
-        // update other player's strategy about this move
-        let other_player_index = if self.player_to_move == 0 { 1 } else { 0 };
-        self.players[other_player_index].strategy.update_after_other_player_move(Some(card));
-        
         let card_color_index = card.get_color() as usize;
         let card_value = card.get_value();
+
+        self.players[self.player_to_move].hand.remove(card_index);
+        // Draw a new card if possible
+        let card_seen;
+        if let Some(new_card) = self.deck.cards.pop() {
+            self.players[self.player_to_move].hand.push(new_card);
+            card_seen = Some(new_card);
+        } else {
+            card_seen = None;
+        }
+
         if self.fireworks[card_color_index] + 1 == card_value {
             // Successful play
             self.fireworks[card_color_index] += 1;
+            self.players[self.player_to_move].strategy.update_after_own_move(&Move::Play(card_index), &MoveResult::Play(true, card_seen));
+            let other_player_index = if self.player_to_move == 0 { 1 } else { 0 };
+            self.players[other_player_index].strategy.update_after_other_player_move(&Move::Play(card_index), &MoveResult::Play(true, card_seen));
         } else {
             // Failed play
             self.mistakes_made += 1;
-        }
-        self.players[self.player_to_move].hand.remove(card_index);
-        // Draw a new card if possible
-        if let Some(new_card) = self.deck.cards.pop() {
-            self.players[self.player_to_move].hand.push(new_card);
+            self.players[self.player_to_move].strategy.update_after_own_move(&Move::Play(card_index), &MoveResult::Play(false, card_seen));
             let other_player_index = if self.player_to_move == 0 { 1 } else { 0 };
-            self.players[other_player_index].see(new_card);
+            self.players[other_player_index].strategy.update_after_other_player_move(&Move::Play(card_index), &MoveResult::Play(false, card_seen));
         }
     }
 
     fn discard(&mut self, card_index: usize) {
         let card = self.players[self.player_to_move].hand.remove(card_index);
-        // update player to move's strategy about their own move
-        self.players[self.player_to_move].strategy.update_after_own_move(Some(card));
-        // update other player's strategy about this move
-        let other_player_index = if self.player_to_move == 0 { 1 } else { 0 };
-        self.players[other_player_index].strategy.update_after_other_player_move(Some(card));
-
         if self.hints_remaining < 8 {
             self.hints_remaining += 1;
         }
         // Draw a new card if possible
+        let card_seen;
         if let Some(new_card) = self.deck.cards.pop() {
             self.players[self.player_to_move].hand.push(new_card);
-            let other_player_index = if self.player_to_move == 0 { 1 } else { 0 };
-            self.players[other_player_index].see(new_card);
+            card_seen = Some(new_card);
+        } else {
+            card_seen = None;
         }
+        self.players[self.player_to_move].strategy.update_after_own_move(&Move::Discard(card_index), &MoveResult::Discard(card_seen));
+        let other_player_index = if self.player_to_move == 0 { 1 } else { 0 };
+        self.players[other_player_index].strategy.update_after_other_player_move(&Move::Discard(card_index), &MoveResult::Discard(card_seen));
     }
 
     fn give_hint_color(&mut self, color: Color) {
-        // generate the knowledge hint
-        let knowledge_hint = Knowledge::from_color(color);
-        let other_player_index = if self.player_to_move == 0 { 1 } else { 0 };
-        let other_player = &mut self.players[other_player_index];
-        other_player.get_hint(&knowledge_hint, 
-            &other_player.hand.iter().enumerate()
-                .filter_map(|(i, &card)| if card.get_color() == color { Some(i) } else { None })
-                .collect::<Vec<usize>>()
-        );
-        if self.hints_remaining > 0 {
-            self.hints_remaining -= 1;
+        if self.hints_remaining == 0 {
+            panic!("No hints remaining");
         }
+        self.hints_remaining -= 1;
+        let other_player_index = if self.player_to_move == 0 { 1 } else { 0 };
+        let other_player = &self.players[other_player_index];
+        let mut hinted_indices = other_player.hand.iter().enumerate()
+            .filter(|(_, card)| card.get_color() == color)
+            .map(|(index, _)| index)
+            .collect::<Vec<usize>>();
+
+        let knowledge_updates = hinted_indices.iter().map(|x| Knowledge::from_color(color)).collect::<Vec<Knowledge>>();
+
+        self.players[self.player_to_move].strategy.update_after_own_move(&Move::HintColor(color), &MoveResult::Hint(hinted_indices.clone(), knowledge_updates.clone()));
+        self.players[other_player_index].strategy.update_after_other_player_move(&Move::HintColor(color), &MoveResult::Hint(hinted_indices, knowledge_updates));
     }
 
     fn give_hint_value(&mut self, value: u8) {
-        // generate the knowledge hint
-        let knowledge_hint = Knowledge::from_value(value);
-        let other_player_index = if self.player_to_move == 0 { 1 } else { 0 };
-        let other_player = &mut self.players[other_player_index];
-        other_player.get_hint(&knowledge_hint, 
-            &other_player.hand.iter().enumerate()
-                .filter_map(|(i, &card)| if card.get_value() == value { Some(i) } else { None })
-                .collect::<Vec<usize>>()
-        );
-        if self.hints_remaining > 0 {
-            self.hints_remaining -= 1;
+        if self.hints_remaining == 0 {
+            panic!("No hints remaining");
         }
+        self.hints_remaining -= 1;
+        let other_player_index = if self.player_to_move == 0 { 1 } else { 0 };
+        let other_player = &self.players[other_player_index];
+        let mut hinted_indices = other_player.hand.iter().enumerate()
+            .filter(|(_, card)| card.get_value() == value)
+            .map(|(index, _)| index)
+            .collect::<Vec<usize>>();
+
+        let knowledge_updates = hinted_indices.iter().map(|x| Knowledge::from_value(value)).collect::<Vec<Knowledge>>();
+
+        self.players[self.player_to_move].strategy.update_after_own_move(&Move::HintValue(value), &MoveResult::Hint(hinted_indices.clone(), knowledge_updates.clone()));
+        self.players[other_player_index].strategy.update_after_other_player_move(&Move::HintValue(value), &MoveResult::Hint(hinted_indices, knowledge_updates));
     }
 
-    pub fn display_game_state(&self) {
-        println!("Fireworks: {:?}", self.fireworks);
-        println!("Hints remaining: {}", self.hints_remaining);
-        println!("Mistakes made: {}", self.mistakes_made);
-        for (i, player) in self.players.iter().enumerate() {
-            println!("Player {}'s hand:", i);
-            player.display_hand();
+    // pub fn display_game_state(&self) {
+    //     println!("Fireworks: {:?}", self.fireworks);
+    //     println!("Hints remaining: {}", self.hints_remaining);
+    //     println!("Mistakes made: {}", self.mistakes_made);
+    //     for (i, player) in self.players.iter().enumerate() {
+    //         println!("Player {}'s hand:", i);
+    //         player.display_hand();
+    //     }
+    // }
+
+    pub fn game_over(&self) -> Option<u8> {
+        if self.mistakes_made >= 3 || self.fireworks.iter().all(|&f| f == 5) || (self.deck.cards.is_empty() && self.players.iter().all(|p| p.hand.len() == 4)) {
+            let score: u8 = self.fireworks.iter().sum();
+            Some(score)
+        } else {
+            None
         }
     }
 }

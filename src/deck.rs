@@ -1,5 +1,6 @@
 use crate::card::Card;
-use crate::enums::Color;
+use crate::enums::*;
+
 use std::fmt;
 use rand::seq::SliceRandom;
 use rand::thread_rng;

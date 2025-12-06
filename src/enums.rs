@@ -1,7 +1,7 @@
+use crate::card::Card;
+use crate::knowledge::Knowledge;
 
-
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Color {
     Red,
     Green,
@@ -10,3 +10,16 @@ pub enum Color {
     White,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Move {
+    Play(usize),
+    Discard(usize),
+    HintColor(Color),
+    HintValue(u8),
+}
+
+pub enum MoveResult{
+    Play(bool, Option<Card>),
+    Discard(Option<Card>),
+    Hint(Vec<usize>, Vec<Knowledge>), //indices of cards hinted, knowledge updates for each card in other player's hand
+}

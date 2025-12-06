@@ -1,6 +1,6 @@
 
 use crate::card::Card;
-use crate::enums::Color;
+use crate::enums::*;
 
 // encoding: tens place = color, units place map: 1 1 1 2 2 3 3 4 4 5
 

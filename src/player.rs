@@ -1,9 +1,9 @@
 use std::fmt;
 use crate::card::Card;
 use crate::deck::Deck;
-use crate::r#move::Move;
 use crate::knowledge::Knowledge;
 use crate::strategy::Strategy;
+use crate::enums::*;
 
 pub struct Player {
     pub hand: Vec<Card>,
