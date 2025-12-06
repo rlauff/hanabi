@@ -10,20 +10,11 @@ pub struct Deck {
 
 impl Deck {
     pub fn new_full_deck() -> Self {
-        let mut cards = Vec::new();
-        let amounts = [3, 2, 2, 2, 1]; // Amounts of cards for values 1 to 5
-
-        let colors = [Color::Red, Color::Green, Color::Blue, Color::Yellow, Color::White];
-        for (ci, _color) in colors.iter().enumerate() {
-            for value in 1..=5u8 {
-                for _ in 0..amounts[(value - 1) as usize] {
-                    let encoded = (ci as u8) * 10 + value;
-                    cards.push(Card(encoded));
-                }
-            }
+        Deck {
+            cards: (0..=49)
+            .map(|i| Card::new(i as u8))
+            .collect::<Vec<Card>>() 
         }
-
-        Deck { cards }
     }
 
     pub fn shuffle(&mut self) {

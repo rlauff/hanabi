@@ -14,24 +14,11 @@ pub struct Game {
 }
 
 impl Game {
-    pub fn new(player_strategies: [fn(&Player) -> Move; 2]) -> Self {
+    pub fn new(player1: Player, player2: Player) -> Self {
         let mut deck = Deck::new_full_deck();
         deck.shuffle();
 
-        let mut players = [
-            Player {
-                hand: Vec::new(),
-                hand_knowledge: [ Knowledge::new_full(); 5],
-                infered_hand_knowledge: [ Knowledge::new_full(); 5],
-                strategy: player_strategies[0],
-            },
-            Player {
-                hand: Vec::new(),
-                hand_knowledge: [ Knowledge::new_full(); 5],
-                infered_hand_knowledge: [ Knowledge::new_full(); 5],
-                strategy: player_strategies[1],
-            },
-        ];
+        let mut players = [player1, player2];
 
         let mut game = Game {
             players,
@@ -47,8 +34,8 @@ impl Game {
             for _ in 0..5 {
                 let other_player_index = if player_index == 0 { 1 } else { 0 };
                 let new_card = game.deck.cards.pop().expect("Deck is empty");
-                game.players[player_index].hand.push(new_card);
-                game.players[other_player_index].see(new_card);
+                game.players[player_index].update_after_own_move(Some(new_card));
+                game.players[other_player_index].update_after_other_player_move(Some(new_card));
             }
         }
         game
@@ -99,12 +86,12 @@ impl Game {
 
     fn play(&mut self, card_index: usize) {
         let card = self.players[self.player_to_move].hand[card_index];
-        // both players see the played card
-        for player in &mut self.players {
-            player.see(card);
-            player.other_player_sees(card);
-        }
-
+        // update player to move's strategy about their own move
+        self.players[self.player_to_move].strategy.update_after_own_move(Some(card));
+        // update other player's strategy about this move
+        let other_player_index = if self.player_to_move == 0 { 1 } else { 0 };
+        self.players[other_player_index].strategy.update_after_other_player_move(Some(card));
+        
         let card_color_index = card.get_color() as usize;
         let card_value = card.get_value();
         if self.fireworks[card_color_index] + 1 == card_value {
@@ -125,11 +112,11 @@ impl Game {
 
     fn discard(&mut self, card_index: usize) {
         let card = self.players[self.player_to_move].hand.remove(card_index);
-        // both players see the discarded card
-        for player in &mut self.players {
-            player.see(card);
-            player.other_player_sees(card);
-        }
+        // update player to move's strategy about their own move
+        self.players[self.player_to_move].strategy.update_after_own_move(Some(card));
+        // update other player's strategy about this move
+        let other_player_index = if self.player_to_move == 0 { 1 } else { 0 };
+        self.players[other_player_index].strategy.update_after_other_player_move(Some(card));
 
         if self.hints_remaining < 8 {
             self.hints_remaining += 1;

@@ -5,6 +5,7 @@ mod r#move;
 mod player;
 mod game;
 mod knowledge;
+mod strategy;
 
 use crate::player::Player;
 use crate::r#move::Move;
