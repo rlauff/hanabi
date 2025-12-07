@@ -21,6 +21,7 @@ fn main() {
     let all_strategies: Vec<(&str, fn() -> Box<dyn Strategy>)> = vec![
         ("Random Only Play", || Box::new(strategies::random_only_play::RandomOnlyPlay::new())),
         ("Gemini", || Box::new(strategies::gemini::Gemini::new())),
+        ("ChatGPT", || Box::new(strategies::chatgpt::ChatGPT::new())),
     ];
 
     // --- Argument Parsing ---
