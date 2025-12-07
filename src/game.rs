@@ -165,7 +165,10 @@ impl Game {
     // }
 
     pub fn game_over(&mut self) -> Option<u8> {
-        if self.mistakes_made >= 3 || self.fireworks.iter().all(|&f| f == 5) || self.deck_empty_countdown == 0 {
+        if self.mistakes_made >= 3 {
+            return Some(0);
+        }
+        if self.fireworks.iter().all(|&f| f == 5) || self.deck_empty_countdown == 0 {
             let score: u8 = self.fireworks.iter().sum();
             Some(score)
         } else {
