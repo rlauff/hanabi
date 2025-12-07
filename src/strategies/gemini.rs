@@ -3,13 +3,15 @@ use crate::card::Card;
 use crate::strategy::Strategy;
 use crate::decksubset::DeckSubset;
 
-/// The Gemini Strategy (v5 - "Tempo & Flow")
+/// The Gemini Strategy (v10 - "The Realist")
 /// 
-/// Improvements:
-/// - **Distance Metric:** Calculates how "far" a card is from being playable.
-/// - **Anti-Clog Logic:** Refuses to give "Setup Hints" for cards that are too far in the future (e.g., 4s when stack is 0).
-/// - **Panic Discard:** If forced to discard a hinted card, chooses the one furthest from playability.
-/// - **Perspective:** Maintains split knowledge (My View vs Public View) from v4.
+/// Fixes:
+/// - **Zombie Card Bug**: Fixed an issue where the AI held onto high-value cards (e.g., Red 5) 
+///   even after the necessary bridging cards (e.g., Red 3) were completely eliminated from the game.
+/// 
+/// Feature:
+/// - **Deep Dead / Unreachable Logic**: The AI now calculates if a card is "Unreachable". 
+///   If the stack is 2, and all 3s are in the discard pile, the 4s and 5s are marked as Dead/Trash.
 pub struct Gemini { 
     hints_remaining: u8,
     fireworks: [u8; 5],
@@ -35,6 +37,8 @@ impl Gemini {
         }
     }
 
+    // --- Helpers ---
+
     fn mark_board_change(&mut self, card: &Card) {
         self.my_view_unknowns.remove_card(*card);
         self.public_unknowns.remove_card(*card);
@@ -50,69 +54,90 @@ impl Gemini {
         self.fireworks[color_idx] + 1 == val
     }
 
-    fn is_dead(&self, card: &Card) -> bool {
-        let color_idx = card.get_color() as usize;
-        let val = card.get_value();
-        self.fireworks[color_idx] >= val
+    fn count_in_discard(&self, color: Color, value: u8) -> usize {
+        self.discarded_cards.iter()
+            .filter(|&c| c.get_color() == color && c.get_value() == value)
+            .count()
     }
 
-    /// Calculates "Distance". 
-    /// 0 = Playable. 
-    /// 1 = Needs 1 card. 
-    /// 255 = Dead/Unknown.
-    fn get_distance(&self, card: &Card) -> u8 {
+    /// Determines if a card is "Useless".
+    /// A card is useless if:
+    /// 1. It has already been played (Value <= Stack).
+    /// 2. It is "Unreachable" (A required lower card is extinct).
+    fn is_useless(&self, card: &Card) -> bool {
         let color_idx = card.get_color() as usize;
         let val = card.get_value();
         let current_stack = self.fireworks[color_idx];
 
-        if current_stack >= val {
-            return 255; // Dead
+        // 1. Already played
+        if current_stack >= val { return true; }
+
+        // 2. Unreachable Check
+        // Check every value between (CurrentStack + 1) and (CardValue - 1).
+        // If ALL copies of any intermediate card are in the discard, this card is unreachable.
+        for req_val in (current_stack + 1)..val {
+            let copies_discarded = self.count_in_discard(card.get_color(), req_val);
+            let max_copies = match req_val {
+                1 => 3,
+                2 | 3 | 4 => 2,
+                5 => 1,
+                _ => 1
+            };
+            if copies_discarded >= max_copies {
+                return true; // The bridge is out!
+            }
         }
+        false
+    }
+
+    fn get_distance(&self, card: &Card) -> u8 {
+        if self.is_useless(card) { return 255; }
+        
+        let color_idx = card.get_color() as usize;
+        let val = card.get_value();
+        let current_stack = self.fireworks[color_idx];
+        
         val - (current_stack + 1)
     }
 
-    fn count_in_discard(&self, card: &Card) -> usize {
-        self.discarded_cards.iter()
-            .filter(|&c| c.get_color() == card.get_color() && c.get_value() == card.get_value())
-            .count()
-    }
-
-    fn is_critical(&self, card: &Card) -> bool {
-        if self.is_dead(card) { return false; }
+    fn is_card_critical(&self, card: &Card) -> bool {
+        if self.is_useless(card) { return false; }
         let val = card.get_value();
         if val == 5 { return true; } 
-        let copies_in_discard = self.count_in_discard(card);
+        
+        let copies_in_discard = self.count_in_discard(card.get_color(), val);
         let max_copies = match val { 1 => 3, 2 | 3 | 4 => 2, _ => 1 };
         copies_in_discard + 1 >= max_copies
     }
 
+    // --- Knowledge Logic ---
+
     fn is_slot_certainly_playable(&self, index: usize) -> bool {
         if index >= self.my_hand_knowledge.len() { return false; }
         let possibilities = self.my_hand_knowledge[index].intersect(&self.my_view_unknowns);
-        
-        let mut any_possible = false;
+        if possibilities.0 == 0 { return false; }
+
         for i in 0..50 {
             let c = Card::new(i);
             if possibilities.has_card(c) {
-                any_possible = true;
                 if !self.is_playable(&c) { return false; }
             }
         }
-        any_possible
+        true
     }
 
-    fn is_slot_certainly_dead(&self, index: usize) -> bool {
+    fn is_slot_certainly_useless(&self, index: usize) -> bool {
         if index >= self.my_hand_knowledge.len() { return false; }
         let possibilities = self.my_hand_knowledge[index].intersect(&self.my_view_unknowns);
-        let mut any_possible = false;
+        if possibilities.0 == 0 { return false; }
+
         for i in 0..50 {
             let c = Card::new(i);
             if possibilities.has_card(c) {
-                any_possible = true;
-                if !self.is_dead(&c) { return false; }
+                if !self.is_useless(&c) { return false; }
             }
         }
-        any_possible
+        true
     }
 
     fn is_slot_hinted(&self, index: usize) -> bool {
@@ -122,37 +147,68 @@ impl Gemini {
 
     fn knowledge_implies_playable(&self, knowledge: &DeckSubset) -> bool {
         let possibilities = knowledge.intersect(&self.public_unknowns);
-        let mut count = 0;
+        if possibilities.0 == 0 { return false; }
+
+        let mut possible_count = 0;
         for i in 0..50 {
             let c = Card::new(i);
             if possibilities.has_card(c) {
-                count += 1;
+                possible_count += 1;
                 if !self.is_playable(&c) { return false; }
             }
         }
-        count > 0
+        possible_count > 0
     }
 
-    /// Calculates the expected "Distance" of a card in my hand.
-    /// Used for "Panic Discarding" - discard the card that is likely furthest away.
-    fn calculate_expected_distance(&self, index: usize) -> f32 {
-        if index >= self.my_hand_knowledge.len() { return 999.0; }
-        let possibilities = self.my_hand_knowledge[index].intersect(&self.my_view_unknowns);
+    /// Scores a card in my hand for discarding. 
+    /// Higher score = Safer to discard.
+    fn calculate_discard_score(&self, index: usize) -> i32 {
+        if index >= self.my_hand_knowledge.len() { return -9999; }
         
-        let mut total = 0;
-        let mut dist_sum = 0;
+        // 1. GARBAGE: If we know it's useless (Played OR Unreachable), get rid of it.
+        if self.is_slot_certainly_useless(index) {
+            return 1000; 
+        }
+
+        let possibilities = self.my_hand_knowledge[index].intersect(&self.my_view_unknowns);
+        let mut total_count = 0;
+        let mut critical_count = 0;
+        let mut dist_accum = 0;
 
         for i in 0..50 {
             let c = Card::new(i);
             if possibilities.has_card(c) {
-                total += 1;
+                total_count += 1;
+                if self.is_card_critical(&c) {
+                    critical_count += 1;
+                }
+                
                 let d = self.get_distance(&c);
-                if d == 255 { dist_sum += 10; } // Penalize dead cards heavily
-                else { dist_sum += d as usize; }
+                if d == 255 { dist_accum += 20; } 
+                else { dist_accum += d as usize; }
             }
         }
-        if total == 0 { return 999.0; }
-        (dist_sum as f32) / (total as f32)
+
+        if total_count == 0 { return 0; }
+
+        // 2. HINTED PROTECTION
+        if self.is_slot_hinted(index) {
+            return -1000;
+        }
+
+        // 3. UNHINTED (The Chop)
+        let mut score = 100;
+
+        // 4. CRITICAL RISK
+        let critical_prob = critical_count as f32 / total_count as f32;
+        let critical_penalty = (critical_prob * 5000.0) as i32;
+        score -= critical_penalty;
+
+        // 5. DISTANCE TIE-BREAKER
+        let avg_dist = dist_accum as i32 / total_count as i32;
+        score += avg_dist;
+
+        score
     }
 }
 
@@ -178,46 +234,45 @@ impl Strategy for Gemini {
             if self.is_slot_certainly_playable(i) { return Move::Play(i); }
         }
 
-        // 2. SAVE CLUE (Critical ONLY)
-        if self.hints_remaining > 0 && !self.partner_hand.is_empty() {
-            let mut likely_discard_idx = 0;
-            let mut found_chop = false;
-            // Find oldest unhinted
-            for i in 0..self.partner_hand.len() {
-                if self.partner_hand_knowledge[i].0 == DeckSubset::new_full().0 {
-                    likely_discard_idx = i;
-                    found_chop = true;
-                    break; 
-                }
+        // 2. CHOP IDENTIFICATION
+        let mut partner_discard_idx = 0;
+        let mut found_chop = false;
+        for i in 0..self.partner_hand.len() {
+            if self.partner_hand_knowledge[i].0 == DeckSubset::new_full().0 {
+                partner_discard_idx = i;
+                found_chop = true;
+                break; 
             }
-            // If all hinted, partner might discard index 0
-            if !found_chop { likely_discard_idx = 0; }
+        }
+        if !found_chop { partner_discard_idx = 0; } 
 
-            let chop_card = self.partner_hand[likely_discard_idx];
-            if self.is_critical(&chop_card) {
-                // If it's already hinted, we assume safe (unless it was a color hint that didn't reveal value)
-                // But generally, if it's the chop, we should warn.
-                if found_chop { return Move::HintValue(chop_card.get_value()); }
+        // 3. SAVE CLUE
+        if self.hints_remaining > 0 && !self.partner_hand.is_empty() {
+            let card_at_risk = self.partner_hand[partner_discard_idx];
+            if self.is_card_critical(&card_at_risk) {
+                return Move::HintValue(card_at_risk.get_value());
             }
         }
 
-        // 3. PLAY CLUE (Immediate Progress)
+        // 4. PLAY CLUE
         if self.hints_remaining > 0 {
             for target_val in 1..=5 {
                 for (i, card) in self.partner_hand.iter().enumerate() {
                     if card.get_value() != target_val { continue; }
+                    
+                    // CRITICAL CHANGE: Don't hint if it's Useless/Unreachable!
+                    if self.is_useless(card) { continue; } 
+                    
                     if !self.is_playable(card) { continue; }
 
                     if self.knowledge_implies_playable(&self.partner_hand_knowledge[i]) { continue; }
 
-                    // Color Hint
                     let color = card.get_color();
                     let k_col = self.partner_hand_knowledge[i].intersect(&DeckSubset::from_color(color));
                     if k_col.0 != self.partner_hand_knowledge[i].0 && self.knowledge_implies_playable(&k_col) {
                         return Move::HintColor(color);
                     }
 
-                    // Value Hint
                     let val = card.get_value();
                     let k_val = self.partner_hand_knowledge[i].intersect(&DeckSubset::from_value(val));
                     if k_val.0 != self.partner_hand_knowledge[i].0 && self.knowledge_implies_playable(&k_val) {
@@ -226,16 +281,15 @@ impl Strategy for Gemini {
                 }
             }
             
-            // 4. SETUP CLUE (Tempo Adjusted)
-            // Only hint if card is NEAR FUTURE (Distance <= 1) OR Critical.
-            // Do NOT hint far future cards (Distance > 1), they clog the hand.
-            if self.hints_remaining > 4 { // Increased threshold to conserve clues
+            // 5. SETUP CLUE
+            if self.hints_remaining > 1 {
                  for (i, card) in self.partner_hand.iter().enumerate() {
-                     if self.partner_hand_knowledge[i].0 == DeckSubset::new_full().0 { // Only if unhinted
+                     if self.partner_hand_knowledge[i].0 == DeckSubset::new_full().0 { 
+                         // Check usability before hinting
+                         if self.is_useless(card) { continue; }
+
                          let dist = self.get_distance(card);
-                         
-                         // Hint if Critical (always) OR Distance is low (0 or 1)
-                         if self.is_critical(card) || (dist <= 1) {
+                         if dist <= 1 || card.get_value() == 5 {
                              return Move::HintValue(card.get_value());
                          }
                      }
@@ -243,48 +297,25 @@ impl Strategy for Gemini {
             }
         }
 
-        // 5. DISCARD
+        // 6. DISCARD (Weighted)
         if self.hints_remaining < 8 {
-            // A. Certain Trash
-            for i in 0..self.my_hand_knowledge.len() {
-                if self.is_slot_certainly_dead(i) { return Move::Discard(i); }
-            }
-
-            // B. Unhinted (The Chop)
-            for i in 0..self.my_hand_knowledge.len() {
-                if !self.is_slot_hinted(i) { return Move::Discard(i); }
-            }
-            
-            // C. PANIC DISCARD (Hand Clogging Fix)
-            // All cards are hinted. Discard the one furthest from being playable.
-            // (Previous version randomized this or picked least likely to be trash, which kept 4s)
             let mut best_discard_idx = 0;
-            let mut highest_distance = -1.0;
+            let mut max_score = i32::MIN;
 
             for i in 0..self.my_hand_knowledge.len() {
-                let dist = self.calculate_expected_distance(i);
-                // We want to discard HIGH distance cards (far future)
-                if dist > highest_distance {
-                    highest_distance = dist;
+                let score = self.calculate_discard_score(i);
+                if score > max_score {
+                    max_score = score;
                     best_discard_idx = i;
                 }
             }
             return Move::Discard(best_discard_idx);
         }
 
-        // 6. FORCE HINT
+        // 7. FORCE HINT
         if !self.partner_hand.is_empty() {
-             // Find *any* new info
-             for (i, card) in self.partner_hand.iter().enumerate() {
-                 let val = card.get_value();
-                 let k_val = self.partner_hand_knowledge[i].intersect(&DeckSubset::from_value(val));
-                 if k_val.0 != self.partner_hand_knowledge[i].0 { return Move::HintValue(val); }
-                 
-                 let col = card.get_color();
-                 let k_col = self.partner_hand_knowledge[i].intersect(&DeckSubset::from_color(col));
-                 if k_col.0 != self.partner_hand_knowledge[i].0 { return Move::HintColor(col); }
-             }
-             return Move::HintValue(self.partner_hand[self.partner_hand.len()-1].get_value());
+             let last_idx = self.partner_hand.len() - 1;
+             return Move::HintValue(self.partner_hand[last_idx].get_value());
         }
 
         Move::Discard(0) 

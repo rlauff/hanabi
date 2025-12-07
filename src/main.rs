@@ -14,7 +14,7 @@ use crate::strategy::Strategy;
 use crate::enums::Move;
 
 // Number of games to run in benchmark mode
-const GAMES_TO_SIMULATE: u32 = 10000;
+const GAMES_TO_SIMULATE: u32 = 1000;
 
 fn main() {
     // Registry of strategies. Uses closures to create fresh instances for every game.

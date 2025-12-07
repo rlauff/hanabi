@@ -88,6 +88,10 @@ impl Game {
             self.players[self.player_to_move].strategy.update_after_own_move(&Move::Play(card_index), &MoveResult::Play(true, card), got_new_card);
             let other_player_index = if self.player_to_move == 0 { 1 } else { 0 };
             self.players[other_player_index].strategy.update_after_other_player_move(&Move::Play(card_index), &MoveResult::Play(true, card));
+            // increase hints if a firework is completed
+            if self.fireworks[card_color_index] == 5 && self.hints_remaining < 8 {
+                self.hints_remaining += 1;
+            }
         } else {
             // Failed play
             self.mistakes_made += 1;
