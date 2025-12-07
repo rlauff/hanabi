@@ -1,6 +1,6 @@
 use rand::rand_core::le;
 
-use crate::knowledge::{self, Knowledge};
+use crate::knowledge::{self, DeckSubset};
 use crate::player::Player;
 use crate::deck::Deck;
 use crate::enums::Color;
@@ -128,7 +128,7 @@ impl Game {
             .map(|(index, _)| index)
             .collect::<Vec<usize>>();
 
-        let knowledge_updates = hinted_indices.iter().map(|x| Knowledge::from_color(color)).collect::<Vec<Knowledge>>();
+        let knowledge_updates = hinted_indices.iter().map(|x| DeckSubset::from_color(color)).collect::<Vec<DeckSubset>>();
 
         self.players[self.player_to_move].strategy.update_after_own_move(&Move::HintColor(color), &MoveResult::Hint(hinted_indices.clone(), knowledge_updates.clone()), false);
         self.players[other_player_index].strategy.update_after_other_player_move(&Move::HintColor(color), &MoveResult::Hint(hinted_indices, knowledge_updates));
@@ -146,7 +146,7 @@ impl Game {
             .map(|(index, _)| index)
             .collect::<Vec<usize>>();
 
-        let knowledge_updates = hinted_indices.iter().map(|x| Knowledge::from_value(value)).collect::<Vec<Knowledge>>();
+        let knowledge_updates = hinted_indices.iter().map(|x| DeckSubset::from_value(value)).collect::<Vec<DeckSubset>>();
 
         self.players[self.player_to_move].strategy.update_after_own_move(&Move::HintValue(value), &MoveResult::Hint(hinted_indices.clone(), knowledge_updates.clone()), false);
         self.players[other_player_index].strategy.update_after_other_player_move(&Move::HintValue(value), &MoveResult::Hint(hinted_indices, knowledge_updates));

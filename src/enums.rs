@@ -1,5 +1,5 @@
 use crate::card::Card;
-use crate::knowledge::Knowledge;
+use crate::knowledge::DeckSubset;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Color {
@@ -21,5 +21,5 @@ pub enum Move {
 pub enum MoveResult{
     Play(bool, Card),
     Discard(Card),
-    Hint(Vec<usize>, Vec<Knowledge>), //indices of cards hinted, knowledge updates for each card in other player's hand
+    Hint(Vec<usize>, Vec<DeckSubset>), //indices of cards hinted, knowledge updates for each card in other player's hand
 }

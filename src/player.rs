@@ -1,7 +1,7 @@
 use std::fmt;
 use crate::card::Card;
 use crate::deck::Deck;
-use crate::knowledge::Knowledge;
+use crate::knowledge::DeckSubset;
 use crate::strategy::Strategy;
 use crate::enums::*;
 
