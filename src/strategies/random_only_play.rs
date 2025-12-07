@@ -1,4 +1,4 @@
-use crate::enums::{Color, Move, MoveResult};
+use crate::enums::{Move, MoveResult};
 use crate::card::Card;
 use crate::strategy::Strategy;
 use rand::seq::IndexedRandom;

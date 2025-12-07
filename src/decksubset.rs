@@ -22,7 +22,17 @@ impl DeckSubset {
         }
     }
 
-     pub fn from_value(value: u8) -> Self {
+    pub fn from_color_inverted(color: Color) -> Self {
+        match color {
+            Color::Red =>       DeckSubset(!0b0000000000000000000000000000000000000000000000000000001111111111),    // Cards 0-9
+            Color::Green =>     DeckSubset(!0b0000000000000000000000000000000000000000000011111111110000000000),  // Cards 10-19
+            Color::Blue =>      DeckSubset(!0b0000000000000000000000000000000000111111111100000000000000000000),   // Cards 20-29
+            Color::Yellow =>    DeckSubset(!0b0000000000000000000000001111111111000000000000000000000000000000), // Cards 30-39
+            Color::White =>     DeckSubset(!0b0000000000000011111111110000000000000000000000000000000000000000),  // Cards 40-49
+        }
+    }
+
+    pub fn from_value(value: u8) -> Self {
         match value {
             1 =>    DeckSubset(0b0000000000000000000001110000000111000000011100000001110000000111),
             2 =>    DeckSubset(0b0000000000000000000110000000011000000001100000000110000000011000),
@@ -31,6 +41,22 @@ impl DeckSubset {
             5 =>    DeckSubset(0b0000000000000010000000001000000000100000000010000000001000000000),
             _ => panic!("Invalid value for hint"), // panic for invalid value, should not happen
         }
+    }
+
+    pub fn from_value_inverted(value: u8) -> Self {
+        match value {
+            1 =>    DeckSubset(!0b0000000000000000000001110000000111000000011100000001110000000111),
+            2 =>    DeckSubset(!0b0000000000000000000110000000011000000001100000000110000000011000),
+            3 =>    DeckSubset(!0b0000000000000000011000000001100000000110000000011000000001100000),
+            4 =>    DeckSubset(!0b0000000000000001100000000110000000011000000001100000000110000000),
+            5 =>    DeckSubset(!0b0000000000000010000000001000000000100000000010000000001000000000),
+            _ => panic!("Invalid value for hint"), // panic for invalid value, should not happen
+        }
+    }
+
+    pub fn from_card(card: Card) -> Self {
+        DeckSubset::from_color(card.get_color())
+            .intersect(&DeckSubset::from_value(card.get_value()))
     }
 
     pub fn has_card(&self, card: Card) -> bool {

@@ -1,18 +1,19 @@
 use rand::rand_core::le;
 
-use crate::knowledge::{self, DeckSubset};
+use crate::decksubset::{self, DeckSubset};
 use crate::player::Player;
-use crate::deck::Deck;
+use crate::deck::{self, Deck};
 use crate::enums::Color;
 use crate::{card, enums::*};
 
 pub struct Game {
-    players: [Player; 2],
+    pub players: [Player; 2],
     deck: Deck,
     fireworks: [u8; 5],
     hints_remaining: u8,
     mistakes_made: u8,
-    player_to_move: usize,
+    pub player_to_move: usize,
+    deck_empty_countdown: u8,
 }
 
 impl Game {
@@ -29,6 +30,7 @@ impl Game {
             hints_remaining: 8,
             mistakes_made: 0,
             player_to_move: 0,
+            deck_empty_countdown: 2
         };
 
         // Deal initial hands
@@ -162,11 +164,16 @@ impl Game {
     //     }
     // }
 
-    pub fn game_over(&self) -> Option<u8> {
-        if self.mistakes_made >= 3 || self.fireworks.iter().all(|&f| f == 5) || (self.deck.cards.is_empty() && self.players.iter().all(|p| p.hand.len() == 4)) {
+    pub fn game_over(&mut self) -> Option<u8> {
+        if self.mistakes_made >= 3 || self.fireworks.iter().all(|&f| f == 5) || self.deck_empty_countdown == 0 {
             let score: u8 = self.fireworks.iter().sum();
             Some(score)
         } else {
+            if self.deck.cards.is_empty() {
+                if self.deck_empty_countdown > 0 {
+                    self.deck_empty_countdown -= 1;
+                }
+            }
             None
         }
     }
