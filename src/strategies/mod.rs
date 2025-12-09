@@ -1,4 +1,4 @@
-
-pub mod random_only_play;
 pub mod gemini;
 pub mod chatgpt;
+pub mod human;
+pub mod robert;

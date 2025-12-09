@@ -64,7 +64,7 @@ impl ChatGPT {
         let mut any = false;
         for i in 0..50 {
             let c = Card::new(i);
-            if poss.has_card(c) {
+            if poss.has_card(&c) {
                 any = true;
                 if !self.is_playable(&c) { return false; }
             }
@@ -83,7 +83,7 @@ impl ChatGPT {
         let mut any=false;
         for i in 0..50 {
             let c = Card::new(i);
-            if poss.has_card(c) {
+            if poss.has_card(&c) {
                 any = true;
                 if !self.is_dead(&c) { return false; }
             }
@@ -97,7 +97,7 @@ impl ChatGPT {
         let mut total = 0usize; let mut sum = 0usize;
         for i in 0..50 {
             let c = Card::new(i);
-            if poss.has_card(c) {
+            if poss.has_card(&c) {
                 total += 1;
                 let color_idx = c.get_color() as usize;
                 let val = c.get_value();
@@ -119,7 +119,7 @@ impl Strategy for ChatGPT {
         self.my_hand_knowledge = vec![DeckSubset::new_full(); 5];
         self.partner_hand = other_player_hand.clone();
         self.partner_hand_knowledge = vec![DeckSubset::new_full(); 5];
-        for c in other_player_hand { self.public_unknowns.remove_card(*c); }
+        for c in other_player_hand { self.public_unknowns.remove_card(c); }
     }
 
     fn decide_move(&mut self) -> Move {
@@ -206,9 +206,9 @@ impl Strategy for ChatGPT {
                 if *idx < self.my_hand_knowledge.len() { self.my_hand_knowledge.remove(*idx); }
                 if got_new_card { self.my_hand_knowledge.push(DeckSubset::new_full()); }
                 match mv_result {
-                    MoveResult::Play(success, card) => { if *success { self.fireworks[card.get_color() as usize] += 1; } else { self.discarded_cards.push(*card); } }
-                    MoveResult::Discard(card) => { self.discarded_cards.push(*card); if self.hints_remaining < 8 { self.hints_remaining += 1; } }
-                    MoveResult::Hint(_, _) => { /* not expected here for play/discard results */ }
+                    MoveResult::Play(success, card, _new_card) => { if *success { self.fireworks[card.get_color() as usize] += 1; } else { self.discarded_cards.push(*card); } }
+                    MoveResult::Discard(card, _new_card) => { self.discarded_cards.push(*card); if self.hints_remaining < 8 { self.hints_remaining += 1; } }
+                    MoveResult::Hint(_) => { /* not expected here for play/discard results */ }
                 }
             }
             Move::HintColor(c) => {
@@ -233,7 +233,6 @@ impl Strategy for ChatGPT {
                     else { self.partner_hand_knowledge[i] = self.partner_hand_knowledge[i].intersect(&DeckSubset::from_value_inverted(*v)); }
                 }
             }
-            _ => {}
         }
     }
 
@@ -243,32 +242,26 @@ impl Strategy for ChatGPT {
                 if *idx < self.partner_hand.len() {
                     let card = self.partner_hand.remove(*idx);
                     self.partner_hand_knowledge.remove(*idx);
-                    self.public_unknowns.remove_card(card);
+                    self.public_unknowns.remove_card(&card);
                     match mv_result {
-                        MoveResult::Play(success, _) => { if *success { self.fireworks[card.get_color() as usize] += 1; } else { self.discarded_cards.push(card); } }
-                        MoveResult::Discard(_) => { self.discarded_cards.push(card); if self.hints_remaining < 8 { self.hints_remaining += 1; } }
-                        MoveResult::Hint(_, _) => { /* not expected here */ }
+                        MoveResult::Play(success, _, _new_card) => { if *success { self.fireworks[card.get_color() as usize] += 1; } else { self.discarded_cards.push(card); } }
+                        MoveResult::Discard(_, _new_card) => { self.discarded_cards.push(card); if self.hints_remaining < 8 { self.hints_remaining += 1; } }
+                        MoveResult::Hint(_) => { /* not expected here */ }
                     }
                 }
             }
             Move::HintColor(c) => {
                 self.hints_remaining -= 1;
-                if let MoveResult::Hint(indices, _) = mv_result {
+                if let MoveResult::Hint(indices) = mv_result {
                     for &i in indices { if i < self.my_hand_knowledge.len() { self.my_hand_knowledge[i] = self.my_hand_knowledge[i].intersect(&DeckSubset::from_color(*c)); } }
                 }
             }
             Move::HintValue(v) => {
                 self.hints_remaining -= 1;
-                if let MoveResult::Hint(indices, _) = mv_result {
+                if let MoveResult::Hint(indices) = mv_result {
                     for &i in indices { if i < self.my_hand_knowledge.len() { self.my_hand_knowledge[i] = self.my_hand_knowledge[i].intersect(&DeckSubset::from_value(*v)); } }
                 }
             }
         }
-    }
-
-    fn see(&mut self, card: &Card) {
-        self.partner_hand.push(*card);
-        self.partner_hand_knowledge.push(DeckSubset::new_full());
-        self.public_unknowns.remove_card(*card);
     }
 }

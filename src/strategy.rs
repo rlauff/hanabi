@@ -9,6 +9,4 @@ pub trait Strategy {
     fn update_after_own_move(&mut self, mv: &Move, mv_result: &MoveResult, got_new_card: bool);
 
     fn update_after_other_player_move(&mut self, mv: &Move, mv_result: &MoveResult);
-
-    fn see(&mut self, card: &Card); // Notifies the strategy of a card that has been seen (drawn by the other player)
 }

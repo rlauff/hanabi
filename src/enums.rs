@@ -19,7 +19,7 @@ pub enum Move {
 }
 
 pub enum MoveResult{
-    Play(bool, Card),
-    Discard(Card),
-    Hint(Vec<usize>, Vec<DeckSubset>), //indices of cards hinted, knowledge updates for each card in other player's hand
+    Play(bool, Card, Option<Card>), // success, played card, new card if drawn
+    Discard(Card, Option<Card>), // discarded card, new card if drawn
+    Hint(Vec<usize>), //indices of cards hinted, knowledge updates for each card in other player's hand
 }

@@ -14,14 +14,14 @@ use crate::strategy::Strategy;
 use crate::enums::Move;
 
 // Number of games to run in benchmark mode
-const GAMES_TO_SIMULATE: u32 = 1000;
+const GAMES_TO_SIMULATE: u32 = 10000;
 
 fn main() {
     // Registry of strategies. Uses closures to create fresh instances for every game.
     let all_strategies: Vec<(&str, fn() -> Box<dyn Strategy>)> = vec![
-        ("Random Only Play", || Box::new(strategies::random_only_play::RandomOnlyPlay::new())),
         ("Gemini", || Box::new(strategies::gemini::Gemini::new())),
         ("ChatGPT", || Box::new(strategies::chatgpt::ChatGPT::new())),
+        ("Robert", || Box::new(strategies::robert::Robert::new())),
     ];
 
     // --- Argument Parsing ---
@@ -78,6 +78,7 @@ fn main() {
         println!("Available strategies:");
         println!(" - Random Only Play");
         println!(" - Gemini");
+        println!(" - ChatGPT");
         return;
     }
 

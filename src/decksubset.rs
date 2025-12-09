@@ -51,15 +51,15 @@ impl DeckSubset {
             .intersect(&DeckSubset::from_value(card.get_value()))
     }
 
-    pub fn has_card(&self, card: Card) -> bool {
+    pub fn has_card(&self, card: &Card) -> bool {
         (self.0 & (1 << card.0)) != 0
     }
 
-    pub fn remove_card(&mut self, card: Card) {
+    pub fn remove_card(&mut self, card: &Card) {
         self.0 &= !(1 << card.0);
     }
 
-    pub fn add_card(&mut self, card: Card) {
+    pub fn add_card(&mut self, card: &Card) {
         self.0 |= 1 << card.0;
     }
 
