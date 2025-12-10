@@ -16,7 +16,7 @@ use crate::strategy::Strategy;
 use crate::enums::Move;
 
 // Number of games to run in benchmark mode
-const GAMES_TO_SIMULATE: u32 = 100000;
+const GAMES_TO_SIMULATE: u32 = 10000;
 
 type StrategyFactory = fn() -> Box<dyn Strategy>;
 
@@ -156,13 +156,13 @@ fn run_single_game(p1_name: &str, p1_factory: StrategyFactory, p2_name: &str, p2
 
         // Print Player 2
         print!("Player 2 ({}): ", p2_name);
-        if p2_is_human {
+        if p2_is_human && false{
              println!("[HIDDEN HAND]");
         } else {
              println!("{}", game.players[1]);
         }
         
-        println!("Fireworks: {:?}", game.fireworks);
+        println!("Fireworks: \x1b[31m{}\x1b[0m, \x1b[32m{}\x1b[0m, \x1b[34m{}\x1b[0m, \x1b[33m{}\x1b[0m, \x1b[37m{}\x1b[0m", game.fireworks[0], game.fireworks[1], game.fireworks[2], game.fireworks[3], game.fireworks[4]);
         
         let selected_move = game.players[player_index].strategy.decide_move();
 
@@ -180,11 +180,11 @@ fn format_move(mv: &Move, game: &Game) -> String {
     match mv {
         Move::Play(idx) => {
             // Zeige Karte, die gespielt wird
-            format!("Play index {} ({})", idx, game.players[player_idx].hand[*idx])
+            format!("Play index {} ({})", idx+1, game.players[player_idx].hand[*idx])
         },
         Move::Discard(idx) => {
             // Zeige Karte, die abgeworfen wird
-            format!("Discard index {} ({})", idx, game.players[player_idx].hand[*idx])
+            format!("Discard index {} ({})", idx+1, game.players[player_idx].hand[*idx])
         },
         Move::HintColor(color) => {
             // Berechne die betroffenen Indizes beim ANDEREN Spieler

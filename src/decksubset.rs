@@ -11,6 +11,10 @@ impl DeckSubset {
         DeckSubset((1u64 << 50) - 1) 
     }
 
+    pub fn new_empty() -> Self {
+        DeckSubset(0)
+    }
+
     pub fn from_color(color: Color) -> Self {
         match color {
             Color::Red =>       DeckSubset(0b0000000000000000000000000000000000000000000000000000001111111111),    // Cards 0-9
@@ -22,8 +26,6 @@ impl DeckSubset {
     }
 
     pub fn from_color_inverted(color: Color) -> Self {
-        // Wir nutzen new_full() als Maske, um sicherzustellen, dass wir im 50-Bit Bereich bleiben
-        // und invertieren dann nur die Bits der Farbe.
         let full = Self::new_full().0;
         let col = Self::from_color(color).0;
         DeckSubset((!col) & full)
@@ -46,7 +48,7 @@ impl DeckSubset {
         DeckSubset((!val) & full)
     }
 
-    pub fn _from_card(card: Card) -> Self {
+    pub fn from_card_type(card: &Card) -> Self { // does not give the exact card, but the kind of card: Like blue 1 gives all 3 blue 1's
         DeckSubset::from_color(card.get_color())
             .intersect(&DeckSubset::from_value(card.get_value()))
     }
@@ -65,5 +67,13 @@ impl DeckSubset {
 
     pub fn intersect(&self, other: &DeckSubset) -> DeckSubset {
         DeckSubset(self.0 & other.0)
+    }
+
+    pub fn union(&self, other: &DeckSubset) -> DeckSubset {
+        DeckSubset(self.0 | other.0)
+    }
+
+    pub fn is_subset(&self, other: &DeckSubset) -> bool {
+        (self.0 & other.0) == self.0
     }
 }

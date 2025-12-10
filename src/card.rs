@@ -48,3 +48,17 @@ impl fmt::Display for Card {
         write!(f, "{}[{}]{}", start, self.get_value(), end)
     }
 }
+
+// impl fmt::Display for Card {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         let (start, end) = match self.get_color() {
+//             Color::Red => ("\x1b[31m", "\x1b[0m"),
+//             Color::Green => ("\x1b[32m", "\x1b[0m"),
+//             Color::Blue => ("\x1b[34m", "\x1b[0m"),
+//             Color::Yellow => ("\x1b[33m", "\x1b[0m"),
+//             Color::White => ("\x1b[37m", "\x1b[0m"),
+//         };
+
+//         write!(f, "{}[{}]{}", start, self.get_value(), end)
+//     }
+// }
