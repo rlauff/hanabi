@@ -46,7 +46,7 @@ impl DeckSubset {
         DeckSubset((!val) & full)
     }
 
-    pub fn from_card(card: Card) -> Self {
+    pub fn _from_card(card: Card) -> Self {
         DeckSubset::from_color(card.get_color())
             .intersect(&DeckSubset::from_value(card.get_value()))
     }
@@ -59,7 +59,7 @@ impl DeckSubset {
         self.0 &= !(1 << card.0);
     }
 
-    pub fn add_card(&mut self, card: &Card) {
+    pub fn _add_card(&mut self, card: &Card) {
         self.0 |= 1 << card.0;
     }
 

@@ -42,7 +42,7 @@ impl fmt::Display for Card {
             Color::Green => ("\x1b[32m", "\x1b[0m green"),
             Color::Blue => ("\x1b[34m", "\x1b[0m blue"),
             Color::Yellow => ("\x1b[33m", "\x1b[0m yellow"),
-            Color::White => ("\x1b[37m", "\x1b[0m whilte"),
+            Color::White => ("\x1b[37m", "\x1b[0m white"),
         };
 
         write!(f, "{}[{}]{}", start, self.get_value(), end)

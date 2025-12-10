@@ -3,7 +3,11 @@ use crate::card::Card;
 use crate::strategy::Strategy;
 use crate::decksubset::DeckSubset;
 
-/// The Gemini Strategy (v10 - "The Realist" - Refactored for MoveResult Draw)
+/// The Gemini Strategy (v14 - "The Efficient Savior")
+/// 
+/// Improvements:
+/// - "Smart Save": Checks if partner *already knows* a card is critical before hinting it.
+/// - Prevents the "Redundant Hint Loop" seen in moves 1 vs 7.
 pub struct Gemini { 
     hints_remaining: u8,
     fireworks: [u8; 5],
@@ -33,7 +37,7 @@ impl Gemini {
         }
     }
 
-    // --- Helpers (Same as before) ---
+    // --- Helpers ---
 
     fn mark_board_change(&mut self, card: &Card) {
         self.my_view_unknowns.remove_card(card);
@@ -61,7 +65,6 @@ impl Gemini {
         let val = card.get_value();
         let current_stack = self.fireworks[color_idx];
         if current_stack >= val { return true; }
-
         for req_val in (current_stack + 1)..val {
             let copies_discarded = self.count_in_discard(card.get_color(), req_val);
             let max_copies = match req_val { 1 => 3, 2 | 3 | 4 => 2, 5 => 1, _ => 1 };
@@ -75,6 +78,7 @@ impl Gemini {
         let color_idx = card.get_color() as usize;
         let val = card.get_value();
         let current_stack = self.fireworks[color_idx];
+        if val <= current_stack { return 255; } 
         val - (current_stack + 1)
     }
 
@@ -87,7 +91,7 @@ impl Gemini {
         copies_in_discard + 1 >= max_copies
     }
 
-    // --- Knowledge Logic (Same as before) ---
+    // --- Knowledge Logic ---
 
     fn is_slot_certainly_playable(&self, index: usize) -> bool {
         if index >= self.my_hand_knowledge.len() { return false; }
@@ -134,6 +138,20 @@ impl Gemini {
         possible_count > 0
     }
 
+    /// Returns true if the partner's current knowledge confirms the card is critical.
+    /// This prevents us from hinting "5" twice.
+    fn knowledge_implies_critical(&self, knowledge: &DeckSubset) -> bool {
+        let possibilities = knowledge.intersect(&self.public_unknowns);
+        if possibilities.0 == 0 { return false; }
+        for i in 0..50 {
+            let c = &Card::new(i);
+            if possibilities.has_card(c) {
+                if !self.is_card_critical(c) { return false; }
+            }
+        }
+        true
+    }
+
     fn calculate_discard_score(&self, index: usize) -> i32 {
         if index >= self.my_hand_knowledge.len() { return -9999; }
         if self.is_slot_certainly_useless(index) { return 1000; }
@@ -160,6 +178,7 @@ impl Gemini {
         let critical_prob = critical_count as f32 / total_count as f32;
         score -= (critical_prob * 5000.0) as i32;
         score += dist_accum as i32 / total_count as i32;
+        
         score
     }
 }
@@ -181,11 +200,12 @@ impl Strategy for Gemini {
     }
 
     fn decide_move(&mut self) -> Move {
-        // 1. PLAY
+        // --- 1. PLAY ---
         for i in (0..self.my_hand_knowledge.len()).rev() {
             if self.is_slot_certainly_playable(i) { return Move::Play(i); }
         }
-        // 2. CHOP
+
+        // --- 2. CHOP & SAVE ---
         let mut partner_discard_idx = 0;
         let mut found_chop = false;
         for i in 0..self.partner_hand.len() {
@@ -197,49 +217,99 @@ impl Strategy for Gemini {
         }
         if !found_chop { partner_discard_idx = 0; } 
 
-        // 3. SAVE
         if self.hints_remaining > 0 && !self.partner_hand.is_empty() {
             let card_at_risk = self.partner_hand[partner_discard_idx];
-            if self.is_card_critical(&card_at_risk) {
+            
+            // SMART SAVE FIX:
+            // Only hint if they don't already know it's critical.
+            let knowledge = self.partner_hand_knowledge[partner_discard_idx];
+            let already_protected = self.knowledge_implies_critical(&knowledge);
+
+            if self.is_card_critical(&card_at_risk) && !already_protected {
                 return Move::HintValue(card_at_risk.get_value());
             }
         }
 
-        // 4. PLAY CLUE
+        // --- 3. PLAY CLUE (Pure Search) ---
         if self.hints_remaining > 0 {
-            for target_val in 1..=5 {
-                for (i, card) in self.partner_hand.iter().enumerate() {
-                    if card.get_value() != target_val { continue; }
-                    if self.is_useless(card) { continue; } 
-                    if !self.is_playable(card) { continue; }
-                    if self.knowledge_implies_playable(&self.partner_hand_knowledge[i]) { continue; }
+            struct ClueCandidate {
+                mv: Move,
+                playable_revealed: usize,
+                useless_touched: usize,
+            }
+            let mut candidates: Vec<ClueCandidate> = Vec::new();
 
-                    let color = card.get_color();
-                    let k_col = self.partner_hand_knowledge[i].intersect(&DeckSubset::from_color(color));
-                    if k_col.0 != self.partner_hand_knowledge[i].0 && self.knowledge_implies_playable(&k_col) {
-                        return Move::HintColor(color);
+            let colors = [Color::Red, Color::Green, Color::Blue, Color::Yellow, Color::White];
+            let values = [1, 2, 3, 4, 5];
+
+            let mut analyze_hint = |mv: Move, indices: Vec<usize>| {
+                if indices.is_empty() { return; }
+                
+                let mut playable_count = 0;
+                let mut useless_count = 0;
+
+                for &idx in &indices {
+                    let card = &self.partner_hand[idx];
+                    let old_k = self.partner_hand_knowledge[idx];
+                    let new_k = match mv {
+                        Move::HintColor(c) => old_k.intersect(&DeckSubset::from_color(c)),
+                        Move::HintValue(v) => old_k.intersect(&DeckSubset::from_value(v)),
+                        _ => old_k,
+                    };
+
+                    let was_known = self.knowledge_implies_playable(&old_k);
+                    let will_be_known = self.knowledge_implies_playable(&new_k);
+                    let is_actually_playable = self.is_playable(card);
+
+                    if is_actually_playable && !was_known && will_be_known {
+                        playable_count += 1;
                     }
-                    let val = card.get_value();
-                    let k_val = self.partner_hand_knowledge[i].intersect(&DeckSubset::from_value(val));
-                    if k_val.0 != self.partner_hand_knowledge[i].0 && self.knowledge_implies_playable(&k_val) {
-                        return Move::HintValue(val);
+                    if self.is_useless(card) {
+                        useless_count += 1;
                     }
                 }
+
+                if playable_count > 0 {
+                    candidates.push(ClueCandidate { mv, playable_revealed: playable_count, useless_touched: useless_count });
+                }
+            };
+
+            for color in colors {
+                let indices: Vec<usize> = self.partner_hand.iter().enumerate()
+                    .filter(|(_, c)| c.get_color() == color).map(|(i, _)| i).collect();
+                analyze_hint(Move::HintColor(color), indices);
             }
-            // 5. SETUP CLUE
-            if self.hints_remaining > 1 {
-                 for (i, card) in self.partner_hand.iter().enumerate() {
-                     if self.partner_hand_knowledge[i].0 == DeckSubset::new_full().0 { 
-                         if self.is_useless(card) { continue; }
-                         let dist = self.get_distance(card);
-                         if dist <= 1 || card.get_value() == 5 {
-                             return Move::HintValue(card.get_value());
-                         }
-                     }
-                 }
+            for val in values {
+                let indices: Vec<usize> = self.partner_hand.iter().enumerate()
+                    .filter(|(_, c)| c.get_value() == val).map(|(i, _)| i).collect();
+                analyze_hint(Move::HintValue(val), indices);
+            }
+
+            if !candidates.is_empty() {
+                candidates.sort_by(|a, b| {
+                     let res = b.playable_revealed.cmp(&a.playable_revealed);
+                     if res != std::cmp::Ordering::Equal { return res; }
+                     a.useless_touched.cmp(&b.useless_touched)
+                });
+                return candidates[0].mv;
             }
         }
-        // 6. DISCARD
+
+        // --- 4. SETUP CLUE ---
+        if self.hints_remaining > 1 {
+             for (i, card) in self.partner_hand.iter().enumerate() {
+                 if self.partner_hand_knowledge[i].0 == DeckSubset::new_full().0 { 
+                     if self.is_useless(card) { continue; }
+                     let dist = self.get_distance(card);
+                     // Strict distance 1 check (no 5s allowed unless dist 1)
+                     if dist <= 1 {
+                         return Move::HintValue(card.get_value());
+                     }
+                 }
+             }
+        }
+
+        // --- 5. DISCARD ---
         if self.hints_remaining < 8 {
             let mut best_discard_idx = 0;
             let mut max_score = i32::MIN;
@@ -252,11 +322,13 @@ impl Strategy for Gemini {
             }
             return Move::Discard(best_discard_idx);
         }
-        // 7. FORCE HINT
+
+        // --- 6. FORCE HINT ---
         if !self.partner_hand.is_empty() {
              let last_idx = self.partner_hand.len() - 1;
              return Move::HintValue(self.partner_hand[last_idx].get_value());
         }
+        
         Move::Discard(0) 
     }
 
@@ -266,7 +338,7 @@ impl Strategy for Gemini {
                 if *idx < self.my_hand_knowledge.len() { self.my_hand_knowledge.remove(*idx); }
                 if got_new_card { self.my_hand_knowledge.push(DeckSubset::new_full()); }
                 match mv_result {
-                    MoveResult::Play(success, card, _) => { // Note: The Option<Card> is None for own move
+                    MoveResult::Play(success, card, _) => { 
                         self.mark_board_change(card);
                         if *success { self.fireworks[card.get_color() as usize] += 1; } 
                         else { self.discarded_cards.push(*card); }
@@ -307,16 +379,13 @@ impl Strategy for Gemini {
     }
 
     fn update_after_other_player_move(&mut self, mv: &Move, mv_result: &MoveResult) {
-        // 1. Handle Play/Discard (Card leaving hand)
         let drawn_card_opt = match mv {
             Move::Play(idx) | Move::Discard(idx) => {
                 if *idx < self.partner_hand.len() {
-                    // Update internal tracker
                     let card = self.partner_hand.remove(*idx);
                     self.partner_hand_knowledge.remove(*idx);
                     self.mark_board_change(&card);
 
-                    // Update Board State
                     match mv_result {
                         MoveResult::Play(success, _, drawn) => {
                             if *success { self.fireworks[card.get_color() as usize] += 1; } 
@@ -328,7 +397,7 @@ impl Strategy for Gemini {
                             if self.hints_remaining < 8 { self.hints_remaining += 1; }
                             drawn
                         },
-                        _ => &None // Should not happen for Play/Discard
+                        _ => &None 
                     }
                 } else {
                     &None
@@ -362,7 +431,6 @@ impl Strategy for Gemini {
             }
         };
 
-        // 2. Handle Draw (New card entering hand) - Replaces `see()`
         if let Some(new_card) = drawn_card_opt {
             self.mark_partner_hand(new_card);
             self.partner_hand.push(*new_card);

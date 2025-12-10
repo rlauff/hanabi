@@ -1,18 +1,10 @@
-use crate::deck::Deck;
-use crate::enums::{Move, MoveResult, Color};
-use crate::card::{self, Card};
+use crate::enums::{Move, MoveResult};
+use crate::card::Card;
 use crate::strategy::Strategy;
 use crate::decksubset::DeckSubset;
 
-/// The Gemini Strategy (v10 - "The Realist")
-/// 
-/// Fixes:
-/// - **Zombie Card Bug**: Fixed an issue where the AI held onto high-value cards (e.g., Red 5) 
-///   even after the necessary bridging cards (e.g., Red 3) were completely eliminated from the game.
-/// 
-/// Feature:
-/// - **Deep Dead / Unreachable Logic**: The AI now calculates if a card is "Unreachable". 
-///   If the stack is 2, and all 3s are in the discard pile, the 4s and 5s are marked as Dead/Trash.
+
+
 pub struct Robert { 
     hints_remaining: u8,
     fireworks: [u8; 5],

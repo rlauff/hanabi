@@ -6,7 +6,7 @@ use crate::enums::*;
 pub struct Game {
     pub players: [Player; 2],
     deck: Deck,
-    fireworks: [u8; 5],
+    pub fireworks: [u8; 5],
     hints_remaining: u8,
     mistakes_made: u8,
     pub player_to_move: usize,
@@ -18,7 +18,7 @@ impl Game {
         let mut deck = Deck::new_full_deck();
         deck.shuffle();
 
-        let mut players = [player1, player2];
+        let players = [player1, player2];
 
         let mut game = Game {
             players,
@@ -132,7 +132,7 @@ impl Game {
         self.hints_remaining -= 1;
         let other_player_index = if self.player_to_move == 0 { 1 } else { 0 };
         let other_player = &self.players[other_player_index];
-        let mut hinted_indices = other_player.hand.iter().enumerate()
+        let hinted_indices = other_player.hand.iter().enumerate()
             .filter(|(_, card)| card.get_color() == color)
             .map(|(index, _)| index)
             .collect::<Vec<usize>>();   // this collect takes more time than it should. optimize later
@@ -148,7 +148,7 @@ impl Game {
         self.hints_remaining -= 1;
         let other_player_index = if self.player_to_move == 0 { 1 } else { 0 };
         let other_player = &self.players[other_player_index];
-        let mut hinted_indices = other_player.hand.iter().enumerate()
+        let hinted_indices = other_player.hand.iter().enumerate()
             .filter(|(_, card)| card.get_value() == value)
             .map(|(index, _)| index)
             .collect::<Vec<usize>>();   // this collect takes more time than it should. optimize later
