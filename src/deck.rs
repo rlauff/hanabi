@@ -1,9 +1,8 @@
 use crate::card::Card;
-use crate::enums::*;
 
 use std::fmt;
 use rand::seq::SliceRandom;
-use rand::thread_rng;
+use rand::rng;
 
 pub struct Deck {
     pub cards: Vec<Card>,
@@ -19,7 +18,7 @@ impl Deck {
     }
 
     pub fn shuffle(&mut self) {
-        let mut rng = thread_rng();
+        let mut rng = rng();
         self.cards.shuffle(&mut rng);
     }
 }

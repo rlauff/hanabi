@@ -21,30 +21,6 @@ impl Player {
         self.hand.push(new_card);
         new_card
     }
-
-    // pub fn see(&mut self, card: Card) {
-    //     // Update knowledge about the other player's hand when they draw a card
-    //     for knowledge in &mut self.hand_knowledge {
-    //         knowledge.remove_card(card);
-    //     }
-    // }
-
-    // pub fn other_player_sees(&mut self, card: Card) {
-    //     // Update inferred knowledge about what the other player knows about their hand
-    //     for knowledge in &mut self.infered_hand_knowledge {
-    //         knowledge.remove_card(card);
-    //     }
-    // }
-
-    // pub fn get_hint(&mut self, hint: &Knowledge, card_indices: &[usize]) {
-    //     for &index in card_indices {
-    //         self.hand_knowledge[index] = self.hand_knowledge[index].intersect(hint);
-    //     }
-    // }
-
-    pub fn display_hand(&self) {
-        println!("{}", self);
-    }
 }
 
 impl fmt::Display for Player {
