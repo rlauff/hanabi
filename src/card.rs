@@ -12,6 +12,10 @@ impl Card {
         Card(encoded)
     }
 
+    pub fn from_value_color_idx(value: usize, color_idx: usize) -> Self {
+        Card::new((10*value + 2*(color_idx+1)) as u8) // 2*(color_idx+1) happens to align with the right units place
+    }
+
     pub fn get_color(&self) -> Color {
         match self.0 / 10 {
             0 => Color::Red,
