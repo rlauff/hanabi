@@ -1,32 +1,153 @@
-use std::cmp::max;
-
 use crate::enums::{Move, MoveResult, Color};
-use crate::card::{self, Card};
+use crate::card::Card;
 use crate::strategy::Strategy;
 use crate::decksubset::DeckSubset;
+use std::fs;
+use std::str::FromStr;
 
-const SCORE_PLAY_BASE: f64                                                      = 1.0;
-const SCORE_PLAY_EXPONENT_PROBABILITY: i32                                      = 5;
-const SCORE_PLAY_BY_PLAYABILITY_WEIGHT: f64                                     = 10.0;
-const SCORE_PLAY_BADNESS_MISTAKE_WEIGHT: f64                                    = 30.0;
-const SCORE_PLAY_CAN_PLAY_5_SURE: f64                                           = 50.0;
-const SCORE_PLAY_MAKE_PLAYABLE: f64                                             = 10.0;
-const SCORE_PLAY_MAKE_PLAYABLE_WEIGHTED_BY_PARTNER_KNOWLEDGE: f64               = 10.0;
-const SCORE_PLAY_MAKE_DISCARDABLE: f64                                          = 5.0;
-const SCORE_PLAY_MAKE_DISCARDABLE_WEIGHTED_BY_PARTNER_KNOWLEDGE: f64            = 5.0;
-const SCORE_PLAY_SURE: f64                                                      = 5.0;
+// robert.rs
 
-const SCORE_DISCARD_BASE: f64                                                   = 1.0;
-const SCORE_DISCARD_EXPONENT_PROBABILITY: i32                                   = 5;
-const SCORE_DISCARD_BADNESS_MISTAKE_WEIGHT: f64                                 = 20.0;
-const SCORE_DISCARD_HINTS_LOW_WEIGHT: f64                                       = 10.0;
+// Params struct holding all strategy multipliers/weights
+#[derive(Clone, Copy, Debug)]
+pub struct Params {
+    pub score_play_base: f64,
+    pub score_discard_base: f64,
+    pub score_hint_base: f64,
 
-const SCORE_HINT_BASE: f64                                                      = 1.0;
-const SCORE_HINT_FOCUSED_HINT: f64                                              = 20.0;
-const SCORE_HINT_EXPONENT_INFORMATION_GAIN: i32                                 = 5;
-const SCORE_HINT_INFORMATION_GAIN: f64                                          = 5.0;
+    // PLAYING
+    pub score_play_exponent_probability: i32,
+    pub score_play_by_playability_weight: f64,
+    pub score_play_badness_mistake_weight: f64,
+    pub score_play_can_play_5_sure: f64,
+    pub score_play_make_playable: f64,
+    pub score_play_make_playable_weighted_by_partner_knowledge: f64,
+    pub score_play_make_discardable: f64,
+    pub score_play_make_discardable_weighted_by_partner_knowledge: f64,
+    pub score_play_sure: f64,
+    pub score_play_focused_hint: f64,
 
-const SCORE_BADNESS_DISCARD_ONLY_CARD_LEFT_OF_ITS_KIND: f64                     = 200.0;
+    // DISCARDING
+    pub score_discard_exponent_probability: i32,
+    pub score_discard_value_of_a_hint: f64,
+    pub score_discard_probability_weight: f64,
+    pub score_discard_badness_mistake_weight: f64,
+    pub score_discard_hints_low_weight: f64,
+
+    // HINTING
+    pub score_hint_focused_hint: f64,
+    pub score_hint_exponent_information_gain: i32,
+    pub score_hint_information_gain: f64,
+    pub score_hint_make_playable: f64,
+    pub score_hint_make_discardable: f64,
+
+    // SPECIAL PENALTIES
+    pub score_badness_discard_only_card_left_of_its_kind: f64,
+}
+
+impl Default for Params {
+    fn default() -> Self {
+        Params {
+            score_play_base: 1.0,
+            score_discard_base: 1.0,
+            score_hint_base: 1.0,
+
+            // PLAYING
+            score_play_exponent_probability: 3,
+            score_play_by_playability_weight: 20.0,
+            score_play_badness_mistake_weight: 100.0,
+            score_play_can_play_5_sure: 1000.0,
+            score_play_make_playable: 50.0,
+            score_play_make_playable_weighted_by_partner_knowledge: 40.0,
+            score_play_make_discardable: 2.0,
+            score_play_make_discardable_weighted_by_partner_knowledge: 2.0,
+            score_play_sure: 100.0,
+            score_play_focused_hint: 100.0,
+
+            // DISCARDING
+            score_discard_exponent_probability: 2,
+            score_discard_value_of_a_hint: 10.0,
+            score_discard_probability_weight: 60.0,
+            score_discard_badness_mistake_weight: 80.0,
+            score_discard_hints_low_weight: 25.0,
+
+            // HINTING
+            score_hint_focused_hint: 50.0,
+            score_hint_exponent_information_gain: 1,
+            score_hint_information_gain: 1.5,
+            score_hint_make_playable: 100.0,
+            score_hint_make_discardable: 20.0,
+
+            // SPECIAL PENALTIES
+            score_badness_discard_only_card_left_of_its_kind: 5000.0,
+        }
+    }
+}
+
+impl Params {
+    // tries to load values from a file, falls back to default if file not found or parsing fails
+    pub fn load_from_file_or_default(filename: &str) -> Self {
+        let mut params = Params::default();
+        
+        if let Ok(content) = fs::read_to_string(filename) {
+            // println!("Loading params from {}", filename);
+            for line in content.lines() {
+                let parts: Vec<&str> = line.split('=').map(|s| s.trim()).collect();
+                if parts.len() == 2 {
+                    let key = parts[0];
+                    let val_str = parts[1];
+                    
+                    // Helper macro to update fields to avoid repetition
+                    macro_rules! update_f64 {
+                        ($field:ident) => {
+                            if key == stringify!($field) {
+                                if let Ok(v) = f64::from_str(val_str) { params.$field = v; }
+                            }
+                        };
+                    }
+                    macro_rules! update_i32 {
+                        ($field:ident) => {
+                            if key == stringify!($field) {
+                                if let Ok(v) = i32::from_str(val_str) { params.$field = v; }
+                            }
+                        };
+                    }
+
+                    update_f64!(score_play_base);
+                    update_f64!(score_discard_base);
+                    update_f64!(score_hint_base);
+
+                    update_i32!(score_play_exponent_probability);
+                    update_f64!(score_play_by_playability_weight);
+                    update_f64!(score_play_badness_mistake_weight);
+                    update_f64!(score_play_can_play_5_sure);
+                    update_f64!(score_play_make_playable);
+                    update_f64!(score_play_make_playable_weighted_by_partner_knowledge);
+                    update_f64!(score_play_make_discardable);
+                    update_f64!(score_play_make_discardable_weighted_by_partner_knowledge);
+                    update_f64!(score_play_sure);
+                    update_f64!(score_play_focused_hint);
+
+                    update_i32!(score_discard_exponent_probability);
+                    update_f64!(score_discard_value_of_a_hint);
+                    update_f64!(score_discard_probability_weight);
+                    update_f64!(score_discard_badness_mistake_weight);
+                    update_f64!(score_discard_hints_low_weight);
+
+                    update_f64!(score_hint_focused_hint);
+                    update_i32!(score_hint_exponent_information_gain);
+                    update_f64!(score_hint_information_gain);
+                    update_f64!(score_hint_make_playable);
+                    update_f64!(score_hint_make_discardable);
+
+                    update_f64!(score_badness_discard_only_card_left_of_its_kind);
+                }
+            }
+        } else {
+            // println!("Could not read params file {}, using defaults.", filename);
+        }
+        params
+    }
+}
 
 pub struct Robert { 
     hints_remaining: u8,
@@ -36,7 +157,8 @@ pub struct Robert {
     partner_hand: Vec<Card>,
     partner_hand_knowledge: Vec<DeckSubset>,
     cards_not_seen: DeckSubset,
-    focused_hint: Option<usize> // potentially the index to the card that was hinted directly
+    focused_hint: Option<usize>, // potentially the index to the card that was hinted directly
+    params: Params, // holds the strategy parameters
 }
 
 impl Robert {
@@ -49,7 +171,22 @@ impl Robert {
             partner_hand: Vec::new(),
             partner_hand_knowledge: vec![DeckSubset::new_full(); 5],
             cards_not_seen: DeckSubset::new_full(),
-            focused_hint: None
+            focused_hint: None,
+            params: Params::load_from_file_or_default("robert_params.txt")
+        }
+    }
+    
+    pub fn new_with_params(params: Params) -> Self {
+        Robert {
+            hints_remaining: 8,
+            mistakes_made: 0,
+            fireworks: [0; 5],
+            my_hand_knowledge: vec![DeckSubset::new_full(); 5],
+            partner_hand: Vec::new(),
+            partner_hand_knowledge: vec![DeckSubset::new_full(); 5],
+            cards_not_seen: DeckSubset::new_full(),
+            focused_hint: None,
+            params,
         }
     }
 
@@ -62,7 +199,7 @@ impl Robert {
         }
         // hint moves
         if self.hints_remaining > 0 {
-            for value in 0..5 {
+            for value in 1..6 {
                 all_moves.push(Move::HintValue(value));
             }
             for color in [Color::Red, Color::Green, Color::Blue, Color::Yellow, Color::White] {
@@ -81,7 +218,7 @@ impl Robert {
         // the cards in the decksubset struct are ordered in the same order as Card takes them, so this index is directly usable
         let card = Card::new(first_card_index);
         let card_subset = DeckSubset::from_card_type(&card);
-        card_subset.is_subset(knowledge).then(|| card)
+        knowledge.is_subset(&card_subset).then(|| card)
 
     }
 
@@ -119,7 +256,7 @@ impl Robert {
                     _ => unreachable!(),
                 };
                 let next_card_subset = DeckSubset::from_color(color)
-                    .intersect(&DeckSubset::from_value(value + 1));
+                    .intersect(&DeckSubset::from_value(value));
                 discardable = discardable.union(&next_card_subset);
             }
         }
@@ -141,17 +278,37 @@ impl Robert {
     }
 
     // the probability of a card being playable/discardable based on knowledge from partners perspective
-    fn partner_probability_playable(&self, idx: usize) -> f64 {
+    fn partner_probability_playable(&self, idx: usize, hint: Option<Move>) -> f64 {
+        // if we pass a hint, then we want to know the probability after this hint is given, so we intersect with it
+        let hint_subset = if let Some(h) = hint {
+            match h {
+                Move::HintColor(color) => { DeckSubset::from_color(color) },
+                Move::HintValue(value) => { DeckSubset::from_value(value) },
+                _ => unreachable!()
+            }
+        } else {
+            DeckSubset::new_full()
+        };
         // divide number of playable cards in knowledge by total number of cards in knowledge
         // intersect with cards not seen to only count cards that could still be in hand
-        self.cards_not_seen.intersect(&self.partner_hand_knowledge[idx].intersect(&self.playable_cards())).0.count_ones() as f64 /
-        self.cards_not_seen.intersect(&self.partner_hand_knowledge[idx]).0.count_ones() as f64
+        hint_subset.intersect(&self.cards_not_seen.intersect(&self.partner_hand_knowledge[idx].intersect(&self.playable_cards()))).0.count_ones() as f64 /
+        hint_subset.intersect(&self.cards_not_seen.intersect(&self.partner_hand_knowledge[idx])).0.count_ones() as f64
     }
-    fn partner_probability_discardable(&self, idx: usize) -> f64 {
+    fn partner_probability_discardable(&self, idx: usize, hint: Option<Move>) -> f64 {
+        // if we pass a hint, then we want to know the probability after this hint is given, so we intersect with it
+        let hint_subset = if let Some(h) = hint {
+            match h {
+                Move::HintColor(color) => { DeckSubset::from_color(color) },
+                Move::HintValue(value) => { DeckSubset::from_value(value) },
+                _ => unreachable!()
+            }
+        } else {
+            DeckSubset::new_full()
+        };
         // divide number of discardable cards in knowledge by total number of cards in knowledge
         // intersect with cards not seen to only count cards that could still be in hand
-        self.cards_not_seen.intersect(&self.partner_hand_knowledge[idx].intersect(&&self.discardable_cards())).0.count_ones() as f64 /
-        self.cards_not_seen.intersect(&self.partner_hand_knowledge[idx]).0.count_ones() as f64
+        hint_subset.intersect(&self.cards_not_seen.intersect(&self.partner_hand_knowledge[idx].intersect(&&self.discardable_cards()))).0.count_ones() as f64 /
+        hint_subset.intersect(&self.cards_not_seen.intersect(&self.partner_hand_knowledge[idx])).0.count_ones() as f64
     }
 
     // the probability of being the only card left of its kind
@@ -189,7 +346,7 @@ impl Robert {
         number_of_cards_excluded_array
     }
 
-        fn number_of_cards_excluded_by_value_hint(&self, value: u8) -> [u8; 5] {
+    fn number_of_cards_excluded_by_value_hint(&self, value: u8) -> [u8; 5] {
         let mut number_of_cards_excluded_array = [0u8; 5];
         for i in 0..self.partner_hand_knowledge.len() {
             if self.partner_hand[i].get_value() == value {
@@ -212,7 +369,9 @@ impl Robert {
 
     // score play takes a card index and assigns a score to the move of playing that card
     // higher score means better move
+    //  - if cannot play for sure and only one life left: score 0
     // Plus points if:
+    //  - play the focused hint
     //  - probability of being playable is high:
     //      Here we take an exponent to give very high weight to cards that are very likely playable, and very low weight to cards that are less likely playable
     //  - add some extra points if we are 100% sure
@@ -226,22 +385,28 @@ impl Robert {
     fn score_play(&mut self, idx: usize) -> f64 {
         let mut score = 0.0;
 
+        // play the focused hint card:
+        if let Some(i) = self.focused_hint && idx == i{
+            score += self.params.score_play_focused_hint;
+        }
+
         // give score for probability of being playable
         let probability_playable = self.probability_playable(idx);
-        score += probability_playable.powi(SCORE_PLAY_EXPONENT_PROBABILITY) * SCORE_PLAY_BY_PLAYABILITY_WEIGHT;
+        if probability_playable < 1.0-10e-15 && self.mistakes_made == 2 { return 0.0 } // do not lose the game
+        score += probability_playable.powi(self.params.score_play_exponent_probability) * self.params.score_play_by_playability_weight;
 
         // extra points if we are sure
-        if probability_playable == 1.0 - 10e-10 { 
-            score += SCORE_PLAY_SURE;
+        if probability_playable > 1.0 - 10e-15 { 
+            score += self.params.score_play_sure;
          } 
 
         // remove score for probability of not being playable, weighted seprately by how bad a mistake would be
         // if we can still make mistakes, then we can play riskier
         // +5 so that this factor does not have too much of an impact. Otherwise we might be too risky at the start
-        score -= (1.0-probability_playable) * ((self.mistakes_made+5) as f64) * SCORE_PLAY_BADNESS_MISTAKE_WEIGHT;
+        score -= (1.0-probability_playable) * ((self.mistakes_made+5) as f64) * self.params.score_play_badness_mistake_weight;
 
         // removes score if the card might be the only one of its kind left
-        score -= (1.0-probability_playable) * self.probability_only_card_left_of_its_kind(idx) * SCORE_BADNESS_DISCARD_ONLY_CARD_LEFT_OF_ITS_KIND;
+        score -= (1.0-probability_playable) * self.probability_only_card_left_of_its_kind(idx) * self.params.score_badness_discard_only_card_left_of_its_kind;
 
         // give a bonus if it makes a card in partner's hand playable
         // weighted by probability of that card being playable from their perspective
@@ -253,15 +418,15 @@ impl Robert {
             let value = card.get_value();
             // first check if the card is even playable
             if value != self.fireworks[color_index] + 1 {
-                return if score<0. { 0. } else { score }; // no bonus if card is not playable
+                return score; // no bonus if card is not playable
             }
             // the value of the new card that would now be playable
             let playable_value = self.fireworks[color_index] + 1;
             if playable_value == 6 {
                 // we know it is a 5 and we can play it, that a huge bonus
                 // we dont need to check if this makes a card in partners hand playable, because it is a 5
-                score += SCORE_PLAY_CAN_PLAY_5_SURE;
-                return if score<0. { 0. } else { score };
+                score += self.params.score_play_can_play_5_sure;
+                return score;
             }
             // for each card in partner's hand, check if it would be playable now
             // apply a bonus if it is playable (disregarding wether they know it or not)
@@ -272,30 +437,30 @@ impl Robert {
                 let partner_card_value = partner_card.get_value();
                 if partner_card_color == color && partner_card_value == playable_value {
                     // card would be playable now
-                    score += SCORE_PLAY_MAKE_PLAYABLE; // base bonus for making a card playable
+                    score += self.params.score_play_make_playable; // base bonus for making a card playable
                     // temporarily add this card to he fireworks so the probability function works
                     // might change later to just pass the fireworks to probability function, but this way the data stays in place
                     self.fireworks[color_index] += 1;
-                    let partner_prob_playable = self.partner_probability_playable(card_idx);
+                    let partner_prob_playable = self.partner_probability_playable(card_idx, None);
                     self.fireworks[color_index] -= 1;
                     // bonus weighted by probability of them knowing it is playable
-                    score += partner_prob_playable * SCORE_PLAY_MAKE_PLAYABLE_WEIGHTED_BY_PARTNER_KNOWLEDGE;
+                    score += partner_prob_playable * self.params.score_play_make_playable_weighted_by_partner_knowledge;
                 }
                 if partner_card_color == color && partner_card_value < playable_value {
                     // this card can now be discarded
-                    score += SCORE_PLAY_MAKE_DISCARDABLE;
+                    score += self.params.score_play_make_discardable;
                     // temporarily add this card to he fireworks so the probability function works
                     // might change later to just pass the fireworks to probability function, but this way the data stays in place
                     self.fireworks[color_index] += 1;
-                    let partner_prob_playable = self.partner_probability_discardable(card_idx);
+                    let partner_prob_playable = self.partner_probability_discardable(card_idx, None);
                     self.fireworks[color_index] -= 1;
                     // bonus weighted by probability of them knowing it is discardable
-                    score += partner_prob_playable * SCORE_PLAY_MAKE_DISCARDABLE_WEIGHTED_BY_PARTNER_KNOWLEDGE;
+                    score += partner_prob_playable * self.params.score_play_make_discardable_weighted_by_partner_knowledge;
                 }
             }
         }
 
-        if score<0. { 0. } else { score }
+        score
     }
 
     // score discard takes a card index and assigns a score to the move of discarding that card
@@ -313,16 +478,16 @@ impl Robert {
 
         // give score for probability of being discardable
         let probability_discardable = self.probability_discardable(idx);
-        score += probability_discardable.powi(SCORE_DISCARD_EXPONENT_PROBABILITY) * SCORE_PLAY_BY_PLAYABILITY_WEIGHT;
+        score += probability_discardable.powi(self.params.score_discard_exponent_probability) * self.params.score_discard_probability_weight;
 
         // give score if hints are low
-        score += (8-self.hints_remaining) as f64 * SCORE_DISCARD_HINTS_LOW_WEIGHT;
+        score += (8-self.hints_remaining) as f64 * self.params.score_discard_hints_low_weight;
 
         // remove score for probability of not being discardable
-        score -= (1.0-probability_discardable) * SCORE_DISCARD_BADNESS_MISTAKE_WEIGHT;
+        score -= (1.0-probability_discardable) * self.params.score_discard_badness_mistake_weight;
 
         // removes score if the card might be the only one of its kind left
-        score -= (1.0-probability_discardable) * self.probability_only_card_left_of_its_kind(idx) * SCORE_BADNESS_DISCARD_ONLY_CARD_LEFT_OF_ITS_KIND;
+        score -= (1.0-probability_discardable) * self.probability_only_card_left_of_its_kind(idx) * self.params.score_badness_discard_only_card_left_of_its_kind;
 
         if score<0. { 0. } else { score }
     }
@@ -335,30 +500,79 @@ impl Robert {
     //  - giving a focused hint to a playable card
     //  - cards become playable in partner's hand
     //  - cards become discardable in partner's hand
+    // TODO: Maybe it would be better to look at the difference between probabilities before and after hint instead of the number of cardss excluded
     fn score_hint(&self, hint: &Move) -> f64 {
+
+        let cards_affected_indices: Vec<usize> = match hint {
+            Move::HintColor(color) => (0..self.partner_hand.len())
+                .filter(|x| self.partner_hand[*x].get_color() == *color)
+                .collect(),
+            Move::HintValue(value) => (0..self.partner_hand.len())
+                .filter(|x| self.partner_hand[*x].get_value() == *value)
+                .collect(),
+            _ => unreachable!(),
+        };
+
+        if cards_affected_indices.is_empty() {
+            return -1000.0; 
+        }
+
         let mut score = 0.0;
         let information_gained_array = match hint {
             Move::HintColor(color) => { self.number_of_cards_excluded_by_color_hint(*color) },
             Move::HintValue(value) => { self.number_of_cards_excluded_by_value_hint(*value) },
             _ => unreachable!()
         };
-        // give points for the ratio of cards deleted from the subsets
-        for i in 0..5 {
+
+        for i in 0..self.partner_hand_knowledge.len() {
             score += (1.0 + (information_gained_array[i] as f64 / self.partner_hand_knowledge[i].0.count_ones() as f64)  
-                                * SCORE_HINT_INFORMATION_GAIN).powi(SCORE_HINT_EXPONENT_INFORMATION_GAIN) - 1.0;
+                                * self.params.score_hint_information_gain).powi(self.params.score_hint_exponent_information_gain) - 1.0;
         }
-        // the hint is for only one card and that card is playable
+
+        // Focused Hint Logic
+        if cards_affected_indices.len() == 1 {
+            let idx = cards_affected_indices[0];
+            let card_affected = self.partner_hand[idx];
+            let card_affected_color = card_affected.get_color();
+            let card_affected_value = card_affected.get_value();
+            
+            if card_affected_value == self.fireworks[card_affected_color as usize] + 1 {
+                // Only add score if partner knows about it
+                if self.partner_probability_playable(idx, None) < 0.99 {
+                    score += self.params.score_hint_focused_hint;
+                }
+            } else if card_affected_value > self.fireworks[card_affected_color as usize] + 1 {
+                 // Bad hint
+                score -= self.params.score_hint_focused_hint;
+            }
+        }
+
+        // Look if cards become playable or discardable
+        for i in 0..self.partner_hand_knowledge.len() {
+            // Check if becoming playable
+            // Wichtig: Wir prüfen, ob die Karte VORHER noch nicht sicher spielbar war
+            if self.partner_probability_playable(i, Some(*hint)) > 0.99 && self.partner_probability_playable(i, None) < 0.99 {
+                score += self.params.score_hint_make_playable;
+            }
+            
+            // Check if becoming discardable
+            if self.partner_probability_discardable(i, Some(*hint)) > 0.99 && self.partner_probability_discardable(i, None) < 0.99 {
+                score += self.params.score_hint_make_discardable;
+            }
+        }
         
-        0.
+        score
     }
 
     // entry point for the score functions
     fn score_move(&mut self, mv: &Move) -> f64 {
-        match mv {
-            Move::Play(idx) => self.score_play(*idx),
-            Move::Discard(idx) => self.score_discard(*idx),
-            Move::HintColor(_) | Move::HintValue(_) => self.score_hint(mv),
-        }
+        let score = match mv {
+            Move::Play(idx) => self.score_play(*idx) * self.params.score_play_base,
+            Move::Discard(idx) => self.score_discard(*idx) * self.params.score_discard_base,
+            Move::HintColor(_) | Move::HintValue(_) => self.score_hint(mv) * self.params.score_hint_base,
+        };
+        // println!("{:?}: {}", mv, score);
+        score
     }
 }
 
@@ -372,10 +586,15 @@ impl Strategy for Robert {
 
     fn decide_move(&mut self) -> Move {
         let all_moves = self.all_possible_moves();
-        *all_moves.iter()
-            .max_by_key(|x| self
-            .score_move(x).to_bits())
-            .expect("There must be at least one legal move")
+
+        // we find the max score move by interpreting the f64 as a bit vector.
+        // If the sign bit is 0, the number is positive and we flip that bit
+        // Otherwise, we flip all bits to reverse the 2's complement
+
+        *all_moves
+            .iter()
+            .max_by_key(|&m| { let b = self.score_move(m).to_bits() as i64; b ^ (b >> 63 & i64::MAX) })
+            .expect("There must be at least one move")
     }
 
     fn update_after_own_move(&mut self, mv: &Move, mv_result: &MoveResult, got_new_card: bool) {

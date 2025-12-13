@@ -8,6 +8,7 @@ mod game;
 mod decksubset;
 mod strategy;
 mod strategies;
+mod evolve_robert;
 
 use std::env;
 use crate::game::Game;
@@ -21,6 +22,7 @@ const GAMES_TO_SIMULATE: u32 = 10000;
 type StrategyFactory = fn() -> Box<dyn Strategy>;
 
 fn main() {
+
     // Registry of strategies.
     let all_strategies: Vec<(&str, StrategyFactory)> = vec![
         ("Gemini", || Box::new(strategies::gemini::Gemini::new())),
@@ -31,6 +33,12 @@ fn main() {
 
     // --- Argument Parsing ---
     let args: Vec<String> = env::args().collect();
+
+    // Check for evolution mode
+    if args.contains(&"evolve-robert".to_string()) {
+        evolve_robert::run_evolution();
+        return;
+    }
     
     // Find selected strategies based on args
     let mut selected_strategies: Vec<(&str, StrategyFactory)> = Vec::new();
