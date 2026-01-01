@@ -5,9 +5,9 @@ use crate::enums::*;
 
 pub struct Game {
     pub players: [Player; 2],
-    deck: Deck,
+    pub deck: Deck,
     pub fireworks: [u8; 5],
-    hints_remaining: u8,
+    pub hints_remaining: u8,
     mistakes_made: u8,
     pub player_to_move: usize,
     deck_empty_countdown: u8,
