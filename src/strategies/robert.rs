@@ -614,8 +614,10 @@ impl Strategy for Robert {
                         if got_new_card {
                             self.my_hand_knowledge.push(DeckSubset::new_full());
                         }
+                        // update cards not seen
+                        self.cards_not_seen.remove_card(card_played);
                     },
-                    _ => ()
+                    _ => unreachable!()
                 }
                 // if we played the focused hint, then its None now
                 if let Some(i) = self.focused_hint && i == *idx {
@@ -635,6 +637,13 @@ impl Strategy for Robert {
                 if self.hints_remaining < 8 {
                     self.hints_remaining += 1;
                 }
+                // update cards not seen: the discarded card is now seen
+                let discarded_card = match mv_result {
+                    MoveResult::Discard(card_discarded, _) => card_discarded,
+                    _ => unreachable!()
+                };
+                self.cards_not_seen.remove_card(discarded_card);
+
                 // if we discarded the focused hint, then its None now
                 if let Some(i) = self.focused_hint && i == *idx {
                     self.focused_hint = None;
